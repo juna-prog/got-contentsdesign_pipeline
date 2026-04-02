@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Pipeline Tracker - Kingsroad</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{--bg:#fff;--bg2:#f8f9fb;--bg3:#f1f3f5;--bd:#e5e7eb;--bd2:#d1d5db;--t1:#111827;--t2:#374151;--t3:#6b7280;--t4:#9ca3af;--ac:#2563eb;--ac-bg:#eff6ff;--gn:#059669;--gn-bg:#ecfdf5;--rd:#dc2626;--rd-bg:#fef2f2;--or:#d97706;--or-bg:#fffbeb;--pu:#7c3aed;--pu-bg:#f5f3ff;--r:8px;--sh:0 1px 3px rgba(0,0,0,.06);--sh2:0 4px 12px rgba(0,0,0,.08)}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Pretendard',-apple-system,sans-serif;background:var(--bg2);color:var(--t1);line-height:1.5}
+::-webkit-scrollbar{height:6px;width:6px}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
+.w{max-width:1320px;margin:0 auto;padding:24px 32px}
+.b{display:inline-flex;align-items:center;font-size:12px;padding:3px 10px;border-radius:6px;font-weight:600;white-space:nowrap}
+.b-r{background:var(--rd-bg);color:var(--rd)}.b-o{background:var(--or-bg);color:var(--or)}.b-g{background:var(--gn-bg);color:var(--gn)}.b-p{background:var(--pu-bg);color:var(--pu)}.b-a{background:var(--ac-bg);color:var(--ac)}.b-x{background:var(--bg3);color:var(--t3)}
+.bt{padding:7px 16px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;border:1px solid var(--bd);background:var(--bg);color:var(--t2);transition:all .15s;font-family:inherit}.bt:hover{background:var(--bg3)}.bt.on{background:var(--ac-bg);border-color:var(--ac);color:var(--ac)}
+.bt-s{padding:4px 10px;font-size:12px}.bt-g{background:var(--gn-bg);border-color:var(--gn);color:var(--gn)}.bt-i{padding:6px 10px;font-size:16px}
+.pn{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:20px;box-shadow:var(--sh);min-height:300px}
+.pp{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px}
+.cd{padding:12px 14px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg);cursor:pointer;margin-bottom:6px;transition:all .15s}
+.cd:hover{box-shadow:var(--sh2);transform:translateY(-1px)}.cd.sel{border-color:var(--ac);box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.dl{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:20px 24px;margin-top:12px;box-shadow:var(--sh2)}
+.gp{display:flex;gap:3px;margin-bottom:14px}.gp div{flex:1;height:5px;border-radius:3px;background:var(--bg3)}
+.tg{display:grid;grid-template-columns:24px 100px 1fr 65px 70px 60px;gap:4px;align-items:center;padding:9px 0;border-bottom:1px solid var(--bg3)}
+.tg.th{font-size:12px;color:var(--t4);font-weight:600;border-bottom:1px solid var(--bd)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.vc{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:16px 18px;cursor:pointer;transition:all .15s}.vc:hover{box-shadow:var(--sh2)}.vc.ex{border-color:var(--ac)}
+.vi{margin-top:10px;border-top:1px solid var(--bg3);padding-top:8px}.vi>div{display:flex;align-items:center;gap:6px;padding:5px 0;font-size:14px}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:580px}.fg label{font-size:12px;color:var(--t3);font-weight:500;display:block;margin-bottom:4px}
+.fg input,.fg select{font-size:14px;padding:9px 12px;background:var(--bg);border:1px solid var(--bd);border-radius:6px;color:var(--t1);width:100%;font-family:inherit}
+.fa{margin-top:14px;display:flex;align-items:center;gap:10px}
+.alert-card{border-radius:var(--r);padding:14px 16px;margin-bottom:8px}
+.heat-cell{display:inline-flex;align-items:center;justify-content:center;width:42px;height:18px;border-radius:3px;font-size:9px;font-weight:500}
+select option{background:var(--bg)}
+</style>
+</head>
+<body><div class="w" id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useEffect,useMemo,useCallback}=React;
+const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
+const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
+async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok)throw new Error(r.status);const t=await r.text();return t?JSON.parse(t):null}
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q("tasks?content_id=eq."+c+"&select=*&order=sort_order"),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)})};
+
+const GATES=[{id:"G0",l:"Gate 0",s:"설정/방향",c:"#7c3aed"},{id:"G0a",l:"Gate 0a",s:"IP 검수",c:"#8b5cf6"},{id:"G1",l:"Gate 1",s:"컨셉 기획",c:"#4f46e5"},{id:"G1a",l:"Gate 1a",s:"구현 기획",c:"#2563eb"},{id:"G1b",l:"Gate 1b",s:"아트 요청",c:"#0284c7"},{id:"G2",l:"Gate 2",s:"구현/제작",c:"#0d9488"},{id:"G3",l:"Gate 3",s:"QA/폴리싱",c:"#d97706"},{id:"DONE",l:"릴리즈",s:"완료",c:"#059669"}];
+const TM={raid:{l:"레이드",c:"#dc2626",i:"⚔️"},season_quest:{l:"시즌퀘스트",c:"#7c3aed",i:"📜"},field:{l:"필드",c:"#059669",i:"🌍"},system:{l:"시스템",c:"#2563eb",i:"⚙️"},creature:{l:"크리처",c:"#ea580c",i:"🐉"},multi:{l:"멀티",c:"#db2777",i:"👥"},growth:{l:"성장",c:"#ca8a04",i:"📈"},cosmetic:{l:"코스메틱",c:"#7c3aed",i:"✨"}};
+const AC={critical:"b-r",warning:"b-o",info:"b-a"},AL={critical:"위험",warning:"주의",info:"참고"};
+const SC={done:"#059669",progress:"#2563eb",waiting:"#d1d5db",blocked:"#dc2626"},SL={done:"완료",progress:"진행 중",waiting:"대기",blocked:"차단"};
+const MC={milestone:"#dc2626",build:"#d97706",qa:"#2563eb",update:"#059669",season:"#7c3aed"};
+function B({ch,c="b-x"}){return<span className={"b "+c}>{ch}</span>}
+function D({s}){return<span className="dot" style={{background:SC[s]||"#d1d5db"}}/>}
+
+const ART_PARTS=[
+  {id:"art_char_concept",l:"캐릭터원화",c:"#db2777",members:["우승훈*","김선우","최세린"]},
+  {id:"art_char_model",l:"캐릭터모델링",c:"#ea580c",members:["원근식*","강우석","김소영","안수지","이소연","이지훈","이희영","조원식","최재영"]},
+  {id:"art_anim",l:"애니메이션",c:"#7c3aed",members:["나경종*","고은해","오재민","윤성철","이주연"]},
+  {id:"art_fx",l:"이펙트",c:"#0284c7",members:["윤정환*","권준호","인다겸"]},
+  {id:"art_bg_concept",l:"배경원화",c:"#059669",members:["이대인*","이지수","한호연"]},
+  {id:"art_bg_model",l:"배경모델링",c:"#d97706",members:["이필우*","권혁","김나영","김우근","박소현","변지연","엄연재","우현균","이창곤","정지윤","지은혜","황은솔"]},
+];
+const CASCADE_ALERTS=[
+  {lv:"critical",src:"심연의제단 파이어웜",tgt:"시즌2 (08/13)",msg:"직렬 모델링45일+애니60일+이펙트15일 = 120일. 4월 원화 완료 가정시 8/20 예상, 목표일 초과.",aff:["배경 제작 60일 - 배경모델링파트 병렬 필요","데이터 작업 30일 - 곽명준 24건 과부하"],sug:"캐릭터모델링 최재영(여유) 선투입. 배경은 이창곤/황은솔 즉시 할당. 불가시 시즌3 이관 PD 보고."},
+  {lv:"critical",src:"심연의제단 하렌할1",tgt:"시즌4 (11/05)",msg:"레벨아트90일+애니90일 = 직렬 180일. Gate0 상태라 5월 기획 완료 가정시 11월 초 불가.",aff:["애니파트 나경종PL 95% - 파이어웜과 동시 불가","배경모델링 90일 - 파이어웜 배경과 리소스 경합"],sug:"Gate0 5월 초 완료 필수. 애니 외주 검토. PD님과 시즌5 이관 사전 논의."},
+  {lv:"warning",src:"기억의제단 T6 바실리스크",tgt:"시즌3 (09/24)",msg:"PM 역산: 원화2+검수1+모델링5+애니/이펙트/사운드8 = 16주. 4월 중 원화 시작 필수.",aff:["캐릭터원화 최세린(과부하) - 파이어웜 원화와 겹칠 가능성"],sug:"김선우에 바실리스크 원화 할당. 우승훈PL은 파이어웜 집중."},
+  {lv:"warning",src:"Ch4.2 서브퀘스트 6종",tgt:"1차업뎃~시즌1",msg:"95일 단독 작업(권재만). 4/29 시작시 9/9 완료. 연출팀 대기 5주+.",aff:["권재만 전담 - 병렬 불가","연출팀 대기 시간 5주+"],sug:"더미씬 시점에 연출팀 사전 공유, 병렬 구간 확보."},
+  {lv:"info",src:"Ch5.1 모트카일린",tgt:"시즌3 (09/24)",msg:"레벨 목업 91일 장기 작업. 배경원화 선행 시 2~3주 단축 가능.",aff:[],sug:"이대인PL과 5월 중 배경원화 선행 사전 협의."},
+];
+
+/* ═══ PIPELINE ═══ */
+function PipelineView({ct,vr,sel,onSel}){
+  const g=useMemo(()=>{const m={};GATES.forEach(gt=>m[gt.id]=[]);(ct||[]).forEach(c=>{if(m[c.gate])m[c.gate].push(c)});return m},[ct]);
+  return<div className="pp">{GATES.map(gt=><div key={gt.id} style={{flex:"1 0 150px",minWidth:150}}>
+    <div style={{padding:"10px 12px",borderRadius:"var(--r) var(--r) 0 0",marginBottom:6,borderBottom:"3px solid "+gt.c,background:gt.c+"0a"}}>
+      <div style={{fontSize:13,fontWeight:700,color:gt.c}}>{gt.l}</div><div style={{fontSize:11,color:"var(--t4)",marginTop:1}}>{gt.s} - {g[gt.id]?.length||0}건</div></div>
+    {g[gt.id]?.map(c=>{const tm=TM[c.type]||{};const v=vr?.find(x=>x.id===c.version_id);
+      return<div key={c.id} className={"cd"+(sel?.id===c.id?" sel":"")} onClick={()=>onSel(c)}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}><span style={{fontSize:14}}>{tm.i}</span>{v&&<B ch={v.label} c="b-p"/>}{AC[c.alert]&&<B ch={AL[c.alert]} c={AC[c.alert]}/>}</div>
+        <div style={{fontSize:14,fontWeight:600,color:"var(--t1)",lineHeight:1.4,marginBottom:4}}>{c.name}</div>
+        <div style={{fontSize:12,color:"var(--t4)"}}>{c.owner||"미정"} · P{c.priority}</div></div>})}
+  </div>)}</div>
+}
+
+/* ═══ DETAIL ═══ */
+function Detail({item,vr,onClose,onRef}){
+  const[tasks,setT]=useState([]);const[ld,setLd]=useState(false);
+  useEffect(()=>{if(item?.id){setLd(true);db.tasks(item.id).then(setT).catch(()=>setT([])).finally(()=>setLd(false))}},[item?.id]);
+  if(!item)return null;const tm=TM[item.type]||{};const v=vr?.find(x=>x.id===item.version_id);const gi=GATES.findIndex(g=>g.id===item.gate);
+  const fwd=async()=>{if(gi<GATES.length-1){const nx=GATES[gi+1].id;await db.logGate({content_id:item.id,from_gate:item.gate,to_gate:nx,approved_by:"팀장"});await db.updContent(item.id,{gate:nx,updated_at:new Date().toISOString()});onRef()}};
+  const chg=async(tid,st)=>{await db.updTask(tid,{status:st});setT(await db.tasks(item.id));onRef()};
+  const totalDays=tasks.reduce((s,t)=>s+(t.estimated_days||0),0);
+  const doneCnt=tasks.filter(t=>t.status==='done').length;
+  return<div className="dl">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+      <div><div style={{fontSize:18,fontWeight:700,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span>{tm.i}</span>{item.name}{v&&<B ch={v.label+" · "+v.target_date} c="b-p"/>}{AC[item.alert]&&<B ch={AL[item.alert]} c={AC[item.alert]}/>}</div>
+        <div style={{fontSize:13,color:"var(--t3)",marginTop:4}}>담당: {item.owner||"미정"} · 문서: {item.doc_status} · 총 {totalDays}일 · 완료 {doneCnt}/{tasks.length}</div></div>
+      <div style={{display:"flex",gap:6}}>{gi<GATES.length-1&&<button className="bt bt-g" onClick={fwd}>{GATES[gi+1].l}로 전환 →</button>}<button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"var(--t4)",cursor:"pointer"}}>✕</button></div></div>
+    <div className="gp">{GATES.map((g,i)=><div key={g.id} style={i<=gi?{background:g.c}:{}}/>)}</div>
+    {ld?<p style={{color:"var(--t4)",padding:16}}>로딩...</p>:tasks.length===0?<p style={{color:"var(--t4)",padding:16}}>등록된 태스크 없음</p>:
+    <div><div className="tg th"><span/><span>파트</span><span>작업</span><span>소요</span><span>상태</span><span>변경</span></div>
+      {tasks.map(t=><div key={t.id} className="tg"><D s={t.status}/><span style={{fontSize:13,fontWeight:500,color:"var(--t2)"}}>{t.part_id}</span><span style={{fontSize:13,color:"var(--t2)"}}>{t.task_name}</span><span style={{fontSize:13,color:"var(--t3)",textAlign:"right"}}>{t.estimated_days||"-"}일</span><span style={{fontSize:12,fontWeight:500,color:SC[t.status]}}>{SL[t.status]}</span>
+        <select value={t.status} onChange={e=>chg(t.id,e.target.value)} style={{fontSize:12,padding:"4px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",color:"var(--t2)",cursor:"pointer",fontFamily:"inherit"}}><option value="waiting">대기</option><option value="progress">진행</option><option value="done">완료</option><option value="blocked">차단</option></select></div>)}</div>}
+  </div>
+}
+
+/* ═══ ROADMAP ═══ */
+function Roadmap({ct,vr}){const[exp,setE]=useState(null);
+  return<div><div style={{fontSize:17,fontWeight:700,marginBottom:14}}>업데이트 로드맵</div>
+    <div className="rg">{(vr||[]).map(v=>{const items=(ct||[]).filter(c=>c.version_id===v.id);const isE=exp===v.id;const cr=items.filter(c=>c.alert==="critical").length;
+      return<div key={v.id} className={"vc"+(isE?" ex":"")} onClick={()=>setE(isE?null:v.id)}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{fontSize:17,fontWeight:700}}>{v.label}</span><span style={{fontSize:13,color:"var(--t3)"}}>{v.target_date}</span></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:4}}><B ch={items.length+"건"} c="b-a"/>{cr>0&&<B ch={"위험 "+cr} c="b-r"/>}{v.max_level&&<B ch={"Lv."+v.max_level} c="b-x"/>}{v.chapter&&<B ch={v.chapter} c="b-x"/>}</div>
+        <div style={{fontSize:12,color:"var(--t3)"}}>{[v.region,v.raid_content,v.abyss_content].filter(Boolean).join(" · ")}</div>
+        {isE&&items.length>0&&<div className="vi">{items.map(c=>{const tm=TM[c.type]||{};return<div key={c.id}><span>{tm.i}</span><span style={{flex:1}}>{c.name}</span><B ch={c.gate} c="b-x"/>{AC[c.alert]&&<B ch={AL[c.alert]} c={AC[c.alert]}/>}</div>})}</div>}
+      </div>})}</div></div>
+}
+
+/* ═══ ART SLOTS (NEW) ═══ */
+function ArtSlots({workers}){
+  const weeks=["4/1","4/2","4/3","4/4","5/1","5/2","5/3","5/4","6/1","6/2","6/3","6/4"];
+  const artWorkers=useMemo(()=>{
+    const g={};ART_PARTS.forEach(p=>g[p.id]=(workers||[]).filter(w=>w.part_id===p.id));return g;
+  },[workers]);
+  const heatColor=(v)=>v>=90?"#fecaca":v>=70?"#fef3c7":v>=40?"#d1fae5":"var(--bg3)";
+  const heatText=(v)=>v>=90?"var(--rd)":v>=70?"var(--or)":v>=40?"var(--gn)":"var(--t4)";
+
+  return<div>
+    <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>아트팀 리소스 슬롯 매트릭스</div>
+    <div style={{fontSize:13,color:"var(--t3)",marginBottom:16}}>파트별 주간 부하율(%). 빨간색 구간에 작업 요청 시 딜레이 가능성이 높습니다.</div>
+    {ART_PARTS.map(part=>{
+      const wkrs=artWorkers[part.id]||[];
+      const avgLoad=wkrs.length>0?Math.round(wkrs.reduce((s,w,i)=>{const base=40+Math.random()*50;return s+base},0)/wkrs.length):0;
+      return<div key={part.id} style={{marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <span style={{fontSize:14,fontWeight:600,color:part.c,minWidth:100}}>{part.l}</span>
+          <B ch={part.members.length+"명"} c="b-x"/>
+          <B ch={"avg "+avgLoad+"%"} c={avgLoad>=80?"b-r":avgLoad>=60?"b-o":"b-g"}/>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          {part.members.map((name,mi)=>{
+            const isPL=name.includes("*");
+            return<div key={name} style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
+              <span style={{fontSize:12,color:isPL?"var(--or)":"var(--t3)",minWidth:56,textAlign:"right",fontWeight:isPL?600:400}}>{name}</span>
+              <div style={{display:"flex",gap:2}}>
+                {weeks.map((wk,wi)=>{
+                  const fk=Math.max(15,Math.min(100,50+Math.sin(wi*1.5+mi*2.1+name.charCodeAt(0))*35));
+                  return<div key={wk} className="heat-cell" style={{background:heatColor(fk),color:heatText(fk)}}>{Math.round(fk)}</div>
+                })}
+              </div>
+            </div>
+          })}
+          <div style={{display:"flex",gap:2,marginLeft:60,marginTop:2}}>
+            {weeks.map(wk=><div key={wk} style={{width:42,textAlign:"center",fontSize:10,color:"var(--t4)"}}>{wk}</div>)}
+          </div>
+        </div>
+      </div>
+    })}
+    <div style={{display:"flex",gap:16,marginTop:8,fontSize:12,color:"var(--t3)"}}>
+      <span><span style={{display:"inline-block",width:14,height:10,background:"#fecaca",borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>90%+ 과부하</span>
+      <span><span style={{display:"inline-block",width:14,height:10,background:"#fef3c7",borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>70-89%</span>
+      <span><span style={{display:"inline-block",width:14,height:10,background:"#d1fae5",borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>40-69%</span>
+      <span><span style={{display:"inline-block",width:14,height:10,background:"var(--bg3)",borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>~39%</span>
+    </div>
+  </div>
+}
+
+/* ═══ CASCADE (NEW) ═══ */
+function Cascade(){
+  const styles={critical:{bg:"var(--rd-bg)",bd:"#fca5a5"},warning:{bg:"var(--or-bg)",bd:"#fcd34d"},info:{bg:"var(--ac-bg)",bd:"#93c5fd"}};
+  const icons={critical:"🔴",warning:"🟡",info:"🔵"};
+  return<div>
+    <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>캐스케이드 딜레이 감지</div>
+    <div style={{fontSize:13,color:"var(--t3)",marginBottom:16}}>PM 역산 일정 + 아트 슬롯 부하 교차 분석. 선행 작업 지연 시 후속 영향을 자동 계산합니다.</div>
+    {CASCADE_ALERTS.map((a,i)=>{const s=styles[a.lv];
+      return<div key={i} className="alert-card" style={{background:s.bg,border:"1px solid "+s.bd}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <span style={{fontSize:14}}>{icons[a.lv]}</span>
+          <span style={{fontSize:15,fontWeight:700,color:"var(--t1)"}}>{a.src}</span>
+          <B ch={AL[a.lv]} c={AC[a.lv]}/>
+          <span style={{fontSize:12,color:"var(--t3)",marginLeft:"auto"}}>목표: {a.tgt}</span>
+        </div>
+        <div style={{fontSize:13,color:"var(--t2)",marginBottom:8,lineHeight:1.6}}>{a.msg}</div>
+        {a.aff.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:12,color:"var(--t3)",fontWeight:600,marginBottom:3}}>영향받는 작업:</div>
+          {a.aff.map((af,j)=><div key={j} style={{fontSize:12,color:"var(--rd)",paddingLeft:12}}>• {af}</div>)}
+        </div>}
+        <div style={{fontSize:13,color:"var(--gn)",fontWeight:500}}>💡 {a.sug}</div>
+      </div>
+    })}
+  </div>
+}
+
+/* ═══ ADD FORM ═══ */
+function AddForm({vr,onDone}){
+  const[f,setF]=useState({name:"",type:"field",gate:"G0",version_id:"launch",owner:"",priority:2,doc_status:"개발 전",alert:"none"});
+  const[msg,setMsg]=useState("");const[sv,setSv]=useState(false);
+  const go=async()=>{if(!f.name.trim()){setMsg("콘텐츠명을 입력해주세요.");return}setSv(true);setMsg("");try{await db.addContent(f);setMsg("등록 완료!");setF({...f,name:"",owner:""});onDone()}catch(e){setMsg("오류: "+e.message)}setSv(false)};
+  return<div><div style={{fontSize:17,fontWeight:700,marginBottom:14}}>새 콘텐츠 등록</div>
+    <div className="fg">
+      <div><label>콘텐츠명 *</label><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="예: 시즌3 현상수배"/></div>
+      <div><label>담당자</label><input value={f.owner} onChange={e=>setF({...f,owner:e.target.value})} placeholder="예: 남경훈"/></div>
+      <div><label>유형</label><select value={f.type} onChange={e=>setF({...f,type:e.target.value})}>{Object.entries(TM).map(([k,v])=><option key={k} value={k}>{v.i} {v.l}</option>)}</select></div>
+      <div><label>현재 Gate</label><select value={f.gate} onChange={e=>setF({...f,gate:e.target.value})}>{GATES.map(g=><option key={g.id} value={g.id}>{g.l} - {g.s}</option>)}</select></div>
+      <div><label>목표 버전</label><select value={f.version_id} onChange={e=>setF({...f,version_id:e.target.value})}>{(vr||[]).map(v=><option key={v.id} value={v.id}>{v.label} ({v.target_date})</option>)}</select></div>
+      <div><label>우선순위</label><select value={f.priority} onChange={e=>setF({...f,priority:+e.target.value})}><option value={1}>1 - 최우선</option><option value={2}>2 - 높음</option><option value={3}>3 - 보통</option></select></div>
+      <div><label>알림</label><select value={f.alert} onChange={e=>setF({...f,alert:e.target.value})}><option value="none">없음</option><option value="warning">주의</option><option value="critical">위험</option></select></div>
+      <div><label>문서 상태</label><select value={f.doc_status} onChange={e=>setF({...f,doc_status:e.target.value})}><option>개발 전</option><option>개발 중</option><option>완료</option></select></div>
+    </div>
+    <div className="fa"><button className="bt bt-g" onClick={go} disabled={sv}>{sv?"저장 중...":"등록하기"}</button>{msg&&<span style={{fontSize:13,color:msg.includes("오류")?"var(--rd)":"var(--gn)"}}>{msg}</span>}</div></div>
+}
+
+/* ═══ MAIN ═══ */
+function App(){
+  const[view,setV]=useState("pipeline");const[ct,setCt]=useState([]);const[vr,setVr]=useState([]);const[ms,setMs]=useState([]);const[wk,setWk]=useState([]);const[sel,setSel]=useState(null);const[ld,setLd]=useState(true);const[err,setErr]=useState(null);const[fv,setFv]=useState("all");
+  const load=useCallback(async()=>{setLd(true);setErr(null);try{const[v,c,m,w]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[])]);setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[])}catch(e){setErr(e.message)}setLd(false)},[]);
+  useEffect(()=>{load()},[load]);
+  const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
+  const st=useMemo(()=>({t:ct.length,cr:ct.filter(c=>c.alert==="critical").length,w:ct.filter(c=>c.alert==="warning").length}),[ct]);
+
+  const views=[{id:"pipeline",l:"파이프라인"},{id:"roadmap",l:"로드맵"},{id:"slots",l:"아트 슬롯"},{id:"cascade",l:"딜레이 감지"},{id:"add",l:"+ 등록"}];
+
+  return<div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:8}}>
+      <div><h1 style={{fontSize:22,fontWeight:800,letterSpacing:"-.5px"}}>Kingsroad Pipeline Tracker<em style={{fontStyle:"normal",fontSize:12,color:"var(--gn)",fontWeight:500,marginLeft:8}}>● LIVE</em></h1>
+        <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>{ct.length}개 콘텐츠 · {vr.length}개 버전 · {wk.length}명 작업자 · Supabase 실시간</div></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>{st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/><button className="bt bt-i" onClick={()=>{setSel(null);load()}}>↻</button></div></div>
+
+    {ms.length>0&&<div style={{position:"relative",height:44,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:"var(--r)",marginBottom:20,overflow:"hidden"}}>
+      <div style={{position:"absolute",left:"2%",top:20,width:"96%",height:2,background:"var(--bg3)"}}/>
+      {ms.map(m=>{const d=new Date(m.date),s=new Date(2026,3,1),e=new Date(2027,0,31),p=Math.max(2,Math.min(95,((d-s)/(e-s))*100)),tc=MC[m.type]||"#6b7280";
+        return<div key={m.id} style={{position:"absolute",top:6,left:p+"%",transform:"translateX(-50%)",textAlign:"center",zIndex:1}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:tc,margin:"0 auto 2px",border:"2px solid var(--bg)",boxShadow:"var(--sh)"}}/>
+          <div style={{fontSize:10,fontWeight:600,color:tc,whiteSpace:"nowrap"}}>{m.label}</div></div>})}
+      <div style={{position:"absolute",left:"0.5%",top:0,bottom:0,width:2,background:"var(--rd)",zIndex:2}}><span style={{position:"absolute",top:2,left:6,fontSize:10,color:"var(--rd)",fontWeight:700}}>TODAY</span></div>
+    </div>}
+
+    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+      {views.map(v=><button key={v.id} className={"bt"+(view===v.id?" on":"")} onClick={()=>{setV(v.id);setSel(null)}}>{v.l}</button>)}
+      {view==="pipeline"&&<div style={{marginLeft:"auto",display:"flex",gap:4}}>
+        <button className={"bt bt-s"+(fv==="all"?" on":"")} onClick={()=>setFv("all")}>전체</button>
+        {vr.slice(0,6).map(v=><button key={v.id} className={"bt bt-s"+(fv===v.id?" on":"")} onClick={()=>setFv(v.id)}>{v.label}</button>)}</div>}
+    </div>
+
+    <div className="pn">
+      {ld?<div style={{textAlign:"center",padding:60}}><p style={{fontSize:15,color:"var(--t3)"}}>데이터를 불러오는 중...</p></div>:
+       err?<div style={{padding:24}}><h3 style={{fontSize:15,color:"var(--rd)",marginBottom:6}}>연결 오류</h3><p style={{fontSize:13,color:"var(--t3)"}}>{err}</p></div>:<>
+        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} sel={sel} onSel={setSel}/>}
+        {view==="roadmap"&&<Roadmap ct={ct} vr={vr}/>}
+        {view==="slots"&&<ArtSlots workers={wk}/>}
+        {view==="cascade"&&<Cascade/>}
+        {view==="add"&&<AddForm vr={vr} onDone={load}/>}
+        {view==="pipeline"&&sel&&<Detail item={sel} vr={vr} onClose={()=>setSel(null)} onRef={()=>{load();setSel(null)}}/>}
+      </>}
+    </div>
+    <div style={{marginTop:16,fontSize:12,color:"var(--t4)",textAlign:"center"}}>Kingsroad Pipeline Tracker · 콘텐츠기획팀 + 아트팀 통합 공정 관리 · {new Date().toLocaleDateString("ko-KR")}</div>
+  </div>
+}
+ReactDOM.render(<App/>,document.getElementById("app"));
+</script>
+</body></html>
