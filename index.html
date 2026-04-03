@@ -8,7 +8,7 @@
 :root{--bg:#fff;--bg2:#f8f9fb;--bg3:#f1f3f5;--bd:#e5e7eb;--bd2:#d1d5db;--t1:#111827;--t2:#374151;--t3:#6b7280;--t4:#9ca3af;--ac:#2563eb;--ac-bg:#eff6ff;--gn:#059669;--gn-bg:#ecfdf5;--rd:#dc2626;--rd-bg:#fef2f2;--or:#d97706;--or-bg:#fffbeb;--pu:#7c3aed;--pu-bg:#f5f3ff;--r:8px;--sh:0 1px 3px rgba(0,0,0,.06);--sh2:0 4px 12px rgba(0,0,0,.08)}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Pretendard',-apple-system,sans-serif;background:var(--bg2);color:var(--t1);line-height:1.5;overflow:hidden;height:100vh}
 ::-webkit-scrollbar{height:8px;width:8px}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:var(--t4)}
-.app{display:flex;flex-direction:column;height:100vh;max-width:1440px;margin:0 auto;padding:16px 24px 0}
+.app{display:flex;flex-direction:column;height:100vh;max-width:1440px;margin:0 auto;padding:16px 24px 12px}
 .b{display:inline-flex;align-items:center;font-size:12px;padding:3px 10px;border-radius:6px;font-weight:600;white-space:nowrap}
 .b-r{background:var(--rd-bg);color:var(--rd)}.b-o{background:var(--or-bg);color:var(--or)}.b-g{background:var(--gn-bg);color:var(--gn)}.b-p{background:var(--pu-bg);color:var(--pu)}.b-a{background:var(--ac-bg);color:var(--ac)}.b-x{background:var(--bg3);color:var(--t3)}
 .bt{padding:7px 16px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;border:1px solid var(--bd);background:var(--bg);color:var(--t2);transition:all .15s;font-family:inherit}.bt:hover{background:var(--bg3)}.bt.on{background:var(--ac-bg);border-color:var(--ac);color:var(--ac)}
@@ -18,7 +18,9 @@
 /* Pipeline split */
 .split{display:flex;flex:1;overflow:hidden}
 .split-left{flex:1;overflow:auto;padding:16px;min-width:0}
-.split-right{width:420px;border-left:1px solid var(--bd);overflow-y:auto;padding:16px;background:var(--bg2)}
+.split-right{border-left:1px solid var(--bd);overflow-y:auto;padding:16px;background:var(--bg2);flex-shrink:0}
+.resize-handle{width:6px;cursor:col-resize;background:transparent;flex-shrink:0;position:relative;z-index:10;transition:background .15s}
+.resize-handle:hover,.resize-handle.active{background:var(--ac);opacity:.4;border-radius:3px}
 .split-right.closed{display:none}
 .pp{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
 .cd{padding:10px 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg);cursor:pointer;margin-bottom:5px;transition:all .12s;user-select:none}
@@ -74,41 +76,160 @@ const TEAM_MAP={"quest":"콘텐츠기획","field":"콘텐츠기획","combat":"�
 function B({ch,c="b-x"}){return<span className={"b "+c}>{ch}</span>}
 function D({s}){return<span className="dot" style={{background:SC[s]||"#d1d5db"}}/>}
 
+/* ═══ MILESTONE TIMELINE ═══ */
+function MilestoneTimeline({milestones,versions}){
+  const[scale,setScale]=useState(30);
+  const[filters,setFilters]=useState({milestone:true,build:true,qa:true,update:true,season:true});
+  const ref=useRef(null);const wrapRef=useRef(null);const dragState=useRef(null);
+  useEffect(()=>{const el=wrapRef.current;if(!el)return;const h=e=>{if(!e.ctrlKey)return;e.preventDefault();setScale(s=>Math.max(30,Math.min(50,s+(e.deltaY<0?0.2:-0.2))))};el.addEventListener("wheel",h,{passive:false});return()=>el.removeEventListener("wheel",h)},[]);
+  // Right-click drag scroll for timeline
+  useEffect(()=>{const el=ref.current;if(!el)return;
+    const onDown=e=>{if(e.button!==0)return;e.preventDefault();dragState.current={x:e.clientX,sl:el.scrollLeft};el.style.cursor="grabbing"};
+    const onMove=e=>{if(!dragState.current)return;el.scrollLeft=dragState.current.sl-(e.clientX-dragState.current.x)};
+    const onUp=()=>{if(dragState.current){dragState.current=null;el.style.cursor=""}};
+    el.addEventListener("mousedown",onDown);window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    return()=>{el.removeEventListener("mousedown",onDown);window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
+  },[]);
+  const startDate=new Date(2026,3,1);const endDate=new Date(2027,5,1);
+  const totalDays=Math.ceil((endDate-startDate)/(24*60*60*1000));
+  const baseWidth=totalDays*1.2;const width=baseWidth*scale;
+  const dateToX=d=>{const diff=(new Date(d)-startDate)/(24*60*60*1000);return(diff/totalDays)*width};
+  const todayX=dateToX(new Date());
+  const filtered=(milestones||[]).filter(m=>filters[m.type]!==false);
+  const toggleF=k=>setFilters(p=>({...p,[k]:!p[k]}));
+  const typeLabel={milestone:"론칭",build:"빌드",qa:"QA",update:"업데이트",season:"시즌"};
+  const DOW=["일","월","화","수","목","금","토"];
+  const months=useMemo(()=>{const m=[];let d=new Date(startDate);while(d<endDate){m.push({date:new Date(d),label:(d.getMonth()+1)+"월",year:d.getFullYear()});d=new Date(d.getFullYear(),d.getMonth()+1,1)}return m},[]);
+  const days=useMemo(()=>{if(scale<2)return[];const d=[];let cur=new Date(startDate);while(cur<endDate){d.push(new Date(cur));cur=new Date(cur.getTime()+24*60*60*1000)}return d},[scale]);
+  const showDow=scale>=5;
+  const tlHeight=scale>=2?80:64;
+
+  return<div ref={wrapRef} style={{background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:"var(--r)",marginBottom:10,overflow:"hidden",flexShrink:0}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",flexWrap:"wrap"}}>
+      <span style={{fontSize:12,fontWeight:700,color:"var(--t2)"}}>타임라인</span>
+      <div style={{display:"flex",gap:3}}>
+        {Object.entries(typeLabel).map(([k,v])=><button key={k} className={"bt bt-s"+(filters[k]?" on":"")} onClick={()=>toggleF(k)} style={{fontSize:10,padding:"2px 8px"}}>{v}</button>)}
+      </div>
+      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:10,color:"var(--t4)"}}>스케일 (Ctrl+스크롤)</span>
+        <input type="range" min="30" max="50" step="0.1" value={scale} onChange={e=>setScale(+e.target.value)} style={{width:80,accentColor:"var(--ac)"}}/>
+        <span style={{fontSize:10,color:"var(--t4)",minWidth:28}}>{scale.toFixed(1)}x</span>
+      </div>
+    </div>
+    <div ref={ref} style={{overflowX:"auto",overflowY:"hidden",padding:"0 0 6px"}}>
+      <div style={{position:"relative",width,height:tlHeight,minWidth:"100%"}}>
+        {/* Month labels - row 1 */}
+        {months.map((m,i)=>{const x=dateToX(m.date);const nextM=i<months.length-1?dateToX(months[i+1].date):width;
+          return<div key={"m"+i} style={{position:"absolute",left:x,width:nextM-x,height:18,borderRight:"1px solid var(--bd)",borderBottom:"1px solid var(--bg3)",display:"flex",alignItems:"center",paddingLeft:6}}>
+            <span style={{fontSize:10,color:"var(--t2)",fontWeight:700}}>{m.year}년 {m.label}</span>
+          </div>})}
+        {/* Day labels - row 2 (visible at scale >= 2) */}
+        {days.map((d,i)=>{const x=dateToX(d);const isWeekend=d.getDay()===0||d.getDay()===6;const isFirst=d.getDate()===1;
+          return<div key={"d"+i} style={{position:"absolute",left:x,top:18,width:Math.max(8,(width/totalDays)-1),height:showDow?22:16,borderRight:isFirst?"1px solid var(--bd)":"1px solid var(--bg3)",background:isWeekend?"var(--rd-bg)":"transparent",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:8,color:isWeekend?"var(--rd)":"var(--t4)",fontWeight:isFirst?700:400}}>{d.getDate()}</span>
+            {showDow&&<span style={{fontSize:7,color:isWeekend?"var(--rd)":"var(--t4)"}}>{DOW[d.getDay()]}</span>}
+          </div>})}
+        {/* Today marker */}
+        {todayX>0&&todayX<width&&<div style={{position:"absolute",left:todayX,top:0,bottom:0,width:2,background:"var(--rd)",zIndex:3}}>
+          <div style={{position:"absolute",top:0,left:4,fontSize:9,fontWeight:700,color:"var(--rd)",background:"var(--bg)",padding:"0 3px",borderRadius:2,whiteSpace:"nowrap"}}>TODAY</div>
+        </div>}
+        {/* Version lines */}
+        {(versions||[]).filter(v=>v.target_date).map((v,i)=>{
+          const x=dateToX(v.target_date);if(x<0||x>width)return null;
+          return<div key={v.id} style={{position:"absolute",left:x,top:scale>=2?40:20,bottom:0,width:2,background:"var(--pu)",opacity:.3,zIndex:1}}>
+            <div style={{position:"absolute",top:2,left:4,fontSize:9,fontWeight:600,color:"var(--pu)",whiteSpace:"nowrap",background:"var(--bg)",padding:"0 3px",borderRadius:2}}>{v.label}</div>
+          </div>})}
+        {/* Milestone dots */}
+        {filtered.map(ms=>{const x=dateToX(ms.date);if(x<0||x>width)return null;const tc=MC[ms.type]||"var(--t4)";
+          return<div key={ms.id} style={{position:"absolute",left:x-5,top:tlHeight-28,textAlign:"center",zIndex:2}}>
+            <div style={{width:10,height:10,borderRadius:"50%",background:tc,margin:"0 auto 2px",border:"2px solid var(--bg)"}}/>
+            <div style={{fontSize:8,color:tc,fontWeight:600,whiteSpace:"nowrap",transform:"translateX(-40%)"}}>{ms.label}</div>
+          </div>})}
+      </div>
+    </div>
+  </div>
+}
+
 /* ═══ GANTT CHART ═══ */
+// Holiday data - 2026~2027 (KR, Western, JP, TW, HK, IN, TH)
+const HOLIDAYS={
+KR:[{d:"2026-01-01",n:"신정"},{d:"2026-01-28",n:"설날"},{d:"2026-01-29",n:"설날"},{d:"2026-01-30",n:"설날"},{d:"2026-03-01",n:"삼일절"},{d:"2026-05-05",n:"어린이날"},{d:"2026-05-24",n:"석가탄신일"},{d:"2026-06-06",n:"현충일"},{d:"2026-08-15",n:"광복절"},{d:"2026-09-25",n:"추석"},{d:"2026-09-26",n:"추석"},{d:"2026-09-27",n:"추석"},{d:"2026-10-03",n:"개천절"},{d:"2026-10-09",n:"한글날"},{d:"2026-12-25",n:"크리스마스"},{d:"2027-01-01",n:"신정"},{d:"2027-02-16",n:"설날"},{d:"2027-02-17",n:"설날"},{d:"2027-02-18",n:"설날"},{d:"2027-03-01",n:"삼일절"},{d:"2027-05-05",n:"어린이날"},{d:"2027-05-13",n:"석가탄신일"}],
+US:[{d:"2026-01-01",n:"New Year"},{d:"2026-01-19",n:"MLK Day"},{d:"2026-05-25",n:"Memorial"},{d:"2026-07-04",n:"Independence"},{d:"2026-09-07",n:"Labor Day"},{d:"2026-11-26",n:"Thanksgiving"},{d:"2026-12-25",n:"Christmas"},{d:"2027-01-01",n:"New Year"},{d:"2027-01-18",n:"MLK Day"}],
+JP:[{d:"2026-01-01",n:"元日"},{d:"2026-01-12",n:"成人の日"},{d:"2026-02-11",n:"建国記念"},{d:"2026-03-20",n:"春分の日"},{d:"2026-04-29",n:"昭和の日"},{d:"2026-05-03",n:"憲法記念日"},{d:"2026-05-04",n:"みどりの日"},{d:"2026-05-05",n:"こどもの日"},{d:"2026-07-20",n:"海の日"},{d:"2026-08-11",n:"山の日"},{d:"2026-09-21",n:"敬老の日"},{d:"2026-09-23",n:"秋分の日"},{d:"2026-10-12",n:"体育の日"},{d:"2026-11-03",n:"文化の日"},{d:"2026-11-23",n:"勤労感謝"},{d:"2027-01-01",n:"元日"}],
+TW:[{d:"2026-01-01",n:"元旦"},{d:"2026-01-28",n:"春節"},{d:"2026-01-29",n:"春節"},{d:"2026-01-30",n:"春節"},{d:"2026-02-28",n:"和平紀念"},{d:"2026-04-04",n:"兒童節"},{d:"2026-04-05",n:"清明節"},{d:"2026-05-31",n:"端午節"},{d:"2026-10-01",n:"中秋節"},{d:"2026-10-10",n:"國慶日"}],
+HK:[{d:"2026-01-01",n:"New Year"},{d:"2026-01-28",n:"CNY"},{d:"2026-01-29",n:"CNY"},{d:"2026-01-30",n:"CNY"},{d:"2026-04-03",n:"Good Fri"},{d:"2026-04-06",n:"Easter Mon"},{d:"2026-05-01",n:"Labour"},{d:"2026-05-24",n:"Buddha"},{d:"2026-06-19",n:"Dragon Boat"},{d:"2026-07-01",n:"HKSAR"},{d:"2026-10-01",n:"National"},{d:"2026-10-07",n:"Mid-Autumn"},{d:"2026-10-21",n:"Chung Yeung"},{d:"2026-12-25",n:"Christmas"}],
+IN:[{d:"2026-01-26",n:"Republic"},{d:"2026-03-30",n:"Holi"},{d:"2026-04-02",n:"Good Fri"},{d:"2026-04-14",n:"Ambedkar"},{d:"2026-05-01",n:"May Day"},{d:"2026-06-28",n:"Eid"},{d:"2026-08-15",n:"Independence"},{d:"2026-10-02",n:"Gandhi"},{d:"2026-10-20",n:"Dussehra"},{d:"2026-11-10",n:"Diwali"},{d:"2026-12-25",n:"Christmas"}],
+TH:[{d:"2026-01-01",n:"New Year"},{d:"2026-02-17",n:"Makha Bucha"},{d:"2026-04-06",n:"Chakri"},{d:"2026-04-13",n:"Songkran"},{d:"2026-04-14",n:"Songkran"},{d:"2026-04-15",n:"Songkran"},{d:"2026-05-01",n:"Labour"},{d:"2026-05-04",n:"Coronation"},{d:"2026-05-24",n:"Visakha"},{d:"2026-06-03",n:"Queen"},{d:"2026-07-22",n:"Asanha Bucha"},{d:"2026-07-28",n:"King"},{d:"2026-08-12",n:"Mother"},{d:"2026-10-13",n:"Rama IX"},{d:"2026-10-23",n:"Chulalongkorn"},{d:"2026-12-05",n:"Father"},{d:"2026-12-10",n:"Constitution"},{d:"2026-12-31",n:"New Year Eve"}]
+};
+const HOL_COLORS={KR:"#dc2626",US:"#2563eb",JP:"#db2777",TW:"#059669",HK:"#d97706",IN:"#7c3aed",TH:"#0284c7"};
+const HOL_LABELS={KR:"한국",US:"서양",JP:"일본",TW:"대만",HK:"홍콩",IN:"인도",TH:"태국"};
+
 function GanttView({tasks,workers,milestones,parts,contents}){
   const[teamFilter,setTF]=useState("all");
   const[partFilter,setPF]=useState("all");
   const[collapsed,setCol]=useState({});
+  const[expandedW,setExpW]=useState({}); // worker id -> show individual task rows
   const[tooltip,setTip]=useState(null);
-  const chartRef=useRef(null);
+  const[ganttScale,setGS]=useState(30);
+  const[holFilter,setHolF]=useState({KR:true,US:false,JP:true,TW:false,HK:false,IN:false,TH:false});
+  const[showHol,setShowHol]=useState(true);
+  const[workerPopup,setWP]=useState(null); // {worker, tasks, x, y}
+  const chartRef=useRef(null);const ganttWrapRef=useRef(null);const namesRef=useRef(null);const ganttDrag=useRef(null);
+  // Right-click drag scroll for gantt chart
+  useEffect(()=>{const el=chartRef.current;if(!el)return;
+    const onDown=e=>{if(e.button!==0)return;e.preventDefault();ganttDrag.current={x:e.clientX,y:e.clientY,sl:el.scrollLeft,st:el.scrollTop};el.style.cursor="grabbing"};
+    const onMove=e=>{if(!ganttDrag.current)return;el.scrollLeft=ganttDrag.current.sl-(e.clientX-ganttDrag.current.x);el.scrollTop=ganttDrag.current.st-(e.clientY-ganttDrag.current.y)};
+    const onUp=()=>{if(ganttDrag.current){ganttDrag.current=null;el.style.cursor=""}};
+    el.addEventListener("mousedown",onDown);window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    return()=>{el.removeEventListener("mousedown",onDown);window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
+  },[]);
+  // Sync vertical scroll between names and chart
+  useEffect(()=>{
+    const n=namesRef.current,c=chartRef.current;if(!n||!c)return;let syncing=false;
+    const syncN=()=>{if(syncing)return;syncing=true;c.scrollTop=n.scrollTop;syncing=false};
+    const syncC=()=>{if(syncing)return;syncing=true;n.scrollTop=c.scrollTop;syncing=false};
+    n.addEventListener("scroll",syncN);c.addEventListener("scroll",syncC);
+    return()=>{n.removeEventListener("scroll",syncN);c.removeEventListener("scroll",syncC)};
+  },[]);
+  useEffect(()=>{const el=ganttWrapRef.current;if(!el)return;const h=e=>{if(!e.ctrlKey)return;e.preventDefault();setGS(s=>Math.max(30,Math.min(50,s+(e.deltaY<0?0.2:-0.2))))};el.addEventListener("wheel",h,{passive:false});return()=>el.removeEventListener("wheel",h)},[]);
+  useEffect(()=>{if(!workerPopup)return;const h=e=>{if(!e.target.closest('[style*="z-index: 200"]')&&!e.target.closest('.gantt-name'))setWP(null)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[workerPopup]);
 
-  // Timeline config
+  // Timeline config - day-based like MilestoneTimeline
   const startDate=new Date(2026,3,1); // Apr 1
   const endDate=new Date(2027,1,1); // Feb 1
-  const weekWidth=48;
-  const totalWeeks=Math.ceil((endDate-startDate)/(7*24*60*60*1000));
-  const totalWidth=totalWeeks*weekWidth;
+  const totalDays=Math.ceil((endDate-startDate)/(24*60*60*1000));
+  const dayWidth=ganttScale*1.2; // matches MilestoneTimeline baseWidth formula
+  const totalWidth=totalDays*dayWidth;
   const rowH=32;
+  const DOW=["일","월","화","수","목","금","토"];
 
-  // Generate weeks
-  const weeks=useMemo(()=>{
-    const w=[];let d=new Date(startDate);
-    for(let i=0;i<totalWeeks;i++){w.push({date:new Date(d),idx:i});d=new Date(d.getTime()+7*24*60*60*1000)}
-    return w;
-  },[]);
+  // Generate days
+  const days=useMemo(()=>{const d=[];let cur=new Date(startDate);while(cur<endDate){d.push(new Date(cur));cur=new Date(cur.getTime()+24*60*60*1000)}return d},[]);
 
-  // Generate months
+  // Generate months from days
   const months=useMemo(()=>{
     const m=[];let cur=null;
-    weeks.forEach((w,i)=>{
-      const mo=w.date.getMonth();const yr=w.date.getFullYear();const key=yr+"-"+mo;
-      if(key!==cur){m.push({month:mo,year:yr,startIdx:i,weeks:1,label:(mo+1)+"월"});cur=key}
-      else{m[m.length-1].weeks++}
+    days.forEach((d,i)=>{
+      const mo=d.getMonth();const yr=d.getFullYear();const key=yr+"-"+mo;
+      if(key!==cur){m.push({month:mo,year:yr,startIdx:i,days:1,label:(mo+1)+"월"});cur=key}
+      else{m[m.length-1].days++}
     });
     return m;
-  },[weeks]);
+  },[days]);
 
-  // Group workers by part, filtered
+  // Holiday lookup for gantt
+  const holDates=useMemo(()=>{
+    const s=new Set();
+    Object.entries(HOLIDAYS).filter(([k])=>holFilter[k]).forEach(([country,hols])=>{
+      hols.forEach(h=>s.add(h.d));
+    });
+    return s;
+  },[holFilter]);
+
+  // Forced part lead names (planning team)
+  const FORCED_LEADS={"combat":"정하진","level":"정성민","field":"박찬현","quest":"권재만"};
+
+  // Group workers by part, filtered, part leads first
   const groupedWorkers=useMemo(()=>{
     const filtered=(workers||[]).filter(w=>{
       if(teamFilter!=="all"&&TEAM_MAP[w.part_id]!==teamFilter)return false;
@@ -120,6 +241,15 @@ function GanttView({tasks,workers,milestones,parts,contents}){
       const pid=w.part_id||"other";
       if(!g[pid])g[pid]=[];
       g[pid].push(w);
+    });
+    // Sort: part leads first, then forced leads, then alphabetical
+    Object.keys(g).forEach(pid=>{
+      g[pid].sort((a,b)=>{
+        const aLead=a.is_part_lead||a.name===FORCED_LEADS[pid]?1:0;
+        const bLead=b.is_part_lead||b.name===FORCED_LEADS[pid]?1:0;
+        if(bLead!==aLead)return bLead-aLead;
+        return(a.name||"").localeCompare(b.name||"");
+      });
     });
     return g;
   },[workers,teamFilter,partFilter]);
@@ -135,17 +265,19 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     return m;
   },[tasks]);
 
-  // Position calc
+  // Position calc - day based
   const dateToX=(date)=>{
     if(!date)return null;
     const d=new Date(date);
     const diff=(d-startDate)/(24*60*60*1000);
-    return(diff/7)*weekWidth;
+    return diff*dayWidth;
   };
 
   const todayX=dateToX(new Date());
 
-  // Build rows
+  const toggleExpW=id=>setExpW(p=>({...p,[id]:!p[id]}));
+
+  // Build rows (with expanded worker sub-rows)
   const rows=useMemo(()=>{
     const r=[];
     Object.entries(groupedWorkers).forEach(([pid,wkrs])=>{
@@ -153,12 +285,15 @@ function GanttView({tasks,workers,milestones,parts,contents}){
       if(!collapsed[pid]){
         wkrs.forEach(w=>{
           const ts=(workerTasks[w.id]||[]).filter(t=>t.start_date||t.end_date);
-          r.push({type:"worker",worker:w,tasks:ts});
+          r.push({type:"worker",worker:w,tasks:ts,expanded:!!expandedW[w.id]});
+          if(expandedW[w.id]){
+            ts.forEach(t=>r.push({type:"task",task:t,worker:w}));
+          }
         });
       }
     });
     return r;
-  },[groupedWorkers,collapsed,workerTasks]);
+  },[groupedWorkers,collapsed,workerTasks,expandedW]);
 
   const toggleCollapse=(pid)=>setCol(p=>({...p,[pid]:!p[pid]}));
 
@@ -166,11 +301,10 @@ function GanttView({tasks,workers,milestones,parts,contents}){
   const availParts=Object.keys(groupedWorkers);
 
   return<div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden"}}>
-    {/* Filters */}
-    <div style={{padding:"12px 16px",borderBottom:"1px solid var(--bd)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+    {/* Filters row 1 */}
+    <div style={{padding:"8px 16px",borderBottom:"1px solid var(--bg3)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
       <span style={{fontSize:14,fontWeight:700}}>간트 차트</span>
-      <span style={{fontSize:12,color:"var(--t4)"}}>작업자별 일정</span>
-      <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <span style={{fontSize:12,color:"var(--t3)"}}>팀:</span>
         <select value={teamFilter} onChange={e=>setTF(e.target.value)} style={{fontSize:12,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:5,background:"var(--bg)",fontFamily:"inherit"}}>
           <option value="all">전체</option>
@@ -181,27 +315,45 @@ function GanttView({tasks,workers,milestones,parts,contents}){
           <option value="all">전체</option>
           {Object.keys(PART_LABELS).map(p=><option key={p} value={p}>{PART_LABELS[p]}</option>)}
         </select>
-        <div style={{display:"flex",gap:8,marginLeft:12,fontSize:11}}>
+      </div>
+      <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+        <span style={{fontSize:11,color:"var(--t4)"}}>줌</span>
+        <input type="range" min="30" max="50" step="0.1" value={ganttScale} onChange={e=>setGS(+e.target.value)} style={{width:80,accentColor:"var(--ac)"}}/>
+        <span style={{fontSize:10,color:"var(--t4)",minWidth:28}}>{ganttScale.toFixed(1)}x</span>
+        <div style={{display:"flex",gap:6,marginLeft:8,fontSize:11}}>
           <span><span className="dot" style={{background:BAR_C.progress,marginRight:3,verticalAlign:"middle"}}/>진행</span>
           <span><span className="dot" style={{background:BAR_C.waiting,marginRight:3,verticalAlign:"middle"}}/>대기</span>
           <span><span className="dot" style={{background:BAR_C.done,marginRight:3,verticalAlign:"middle"}}/>완료</span>
         </div>
       </div>
     </div>
+    {/* Filters row 2 - holidays */}
+    <div style={{padding:"4px 16px 6px",borderBottom:"1px solid var(--bd)",display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+      <button className={"bt bt-s"+(showHol?" on":"")} onClick={()=>setShowHol(!showHol)} style={{fontSize:10,padding:"2px 8px"}}>공휴일</button>
+      {showHol&&Object.entries(HOL_LABELS).map(([k,v])=><button key={k} className={"bt bt-s"} onClick={()=>setHolF(p=>({...p,[k]:!p[k]}))}
+        style={{fontSize:10,padding:"2px 8px",background:holFilter[k]?HOL_COLORS[k]+"18":"var(--bg)",color:holFilter[k]?HOL_COLORS[k]:"var(--t4)",borderColor:holFilter[k]?HOL_COLORS[k]+"40":"var(--bd)"}}>{v}</button>)}
+    </div>
 
     {/* Gantt body */}
-    <div className="gantt-wrap">
+    <div className="gantt-wrap" ref={ganttWrapRef}>
       {/* Left: names */}
-      <div className="gantt-names">
+      <div className="gantt-names" ref={namesRef}>
         <div style={{height:48,borderBottom:"1px solid var(--bd)",display:"flex",alignItems:"center",padding:"0 12px",fontSize:12,fontWeight:600,color:"var(--t3)",position:"sticky",top:0,background:"var(--bg)",zIndex:4}}>작업자</div>
         {rows.map((r,i)=>r.type==="header"?
           <div key={"h"+r.pid} className="gantt-name part-header" onClick={()=>toggleCollapse(r.pid)}>
             <span style={{marginRight:6}}>{collapsed[r.pid]?"▶":"▼"}</span>{r.label} ({r.count})
+          </div>:r.type==="task"?
+          <div key={"t"+r.task.id} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}}>
+            <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.task.task_name}</span>
           </div>:
-          <div key={"w"+r.worker.id} className="gantt-name">
-            {r.worker.is_part_lead&&<span style={{color:"var(--or)",marginRight:3}}>★</span>}
-            {r.worker.name}
-            <span style={{fontSize:10,color:"var(--t4)",marginLeft:4}}>({r.tasks.length})</span>
+          <div key={"w"+r.worker.id} className="gantt-name" style={{cursor:"pointer",display:"flex",alignItems:"center",gap:2}} onClick={e=>{
+            if(e.target.closest('.exp-btn')){toggleExpW(r.worker.id);return}
+            const rect=e.currentTarget.getBoundingClientRect();
+            setWP({worker:r.worker,tasks:r.tasks,x:rect.right+8,y:rect.top})}}>
+            <span className="exp-btn" onClick={e=>{e.stopPropagation();toggleExpW(r.worker.id)}} style={{fontSize:9,color:"var(--t4)",cursor:"pointer",padding:"0 2px",flexShrink:0}}>{r.expanded?"▼":"▶"}</span>
+            {(r.worker.is_part_lead||FORCED_LEADS[r.worker.part_id]===r.worker.name)&&<span style={{color:"var(--or)",flexShrink:0}}>★</span>}
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.worker.name}</span>
+            <span style={{fontSize:10,color:"var(--t4)",marginLeft:"auto",flexShrink:0}}>({r.tasks.length})</span>
           </div>
         )}
       </div>
@@ -209,17 +361,35 @@ function GanttView({tasks,workers,milestones,parts,contents}){
       {/* Right: chart */}
       <div className="gantt-chart" ref={chartRef}>
         {/* Header with months/weeks */}
-        <div className="gantt-header" style={{width:totalWidth}}>
-          {months.map((m,i)=><div key={i} className="gantt-month" style={{width:m.weeks*weekWidth}}>
-            <div className="gantt-month-label">{m.year}년 {m.label}</div>
-            <div className="gantt-week-label">{m.weeks}주</div>
-          </div>)}
+        {/* Header: month row + day/dow row */}
+        <div style={{position:"sticky",top:0,zIndex:5,background:"var(--bg)",width:totalWidth}}>
+          {/* Month row */}
+          <div style={{display:"flex",borderBottom:"1px solid var(--bd)",height:22}}>
+            {months.map((m,i)=><div key={i} style={{width:m.days*dayWidth,borderRight:"1px solid var(--bd)",display:"flex",alignItems:"center",paddingLeft:6,flexShrink:0}}>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--t1)"}}>{m.year}년 {m.label}</span>
+            </div>)}
+          </div>
+          {/* Day + DOW row */}
+          <div style={{display:"flex",borderBottom:"1px solid var(--bd)",height:26}}>
+            {days.map((d,i)=>{const isWE=d.getDay()===0||d.getDay()===6;const ds=d.toISOString().slice(0,10);const isHol=holDates.has(ds);const isFirst=d.getDate()===1;
+              return<div key={i} style={{width:dayWidth,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRight:isFirst?"1px solid var(--bd)":"1px solid var(--bg3)",background:isHol?"#fef2f2":isWE?"#fef2f2":"transparent"}}>
+                <span style={{fontSize:9,color:isHol||isWE?"var(--rd)":"var(--t3)",fontWeight:isFirst?700:400}}>{d.getDate()}</span>
+                <span style={{fontSize:7,color:isHol||isWE?"var(--rd)":"var(--t4)"}}>{DOW[d.getDay()]}</span>
+              </div>})}
+          </div>
         </div>
 
         {/* Rows */}
         <div style={{position:"relative",width:totalWidth}}>
-          {/* Week grid lines */}
-          {weeks.map((w,i)=><div key={i} style={{position:"absolute",left:i*weekWidth,top:0,bottom:0,width:1,height:rows.length*rowH,background:i%4===0?"var(--bd)":"var(--bg3)"}}/>)}
+          {/* Day grid lines */}
+          {days.map((d,i)=>{const isWE=d.getDay()===0||d.getDay()===6;const isFirst=d.getDate()===1;
+            return<div key={i} style={{position:"absolute",left:i*dayWidth,top:0,width:isFirst?1:0.5,height:rows.length*rowH,background:isFirst?"var(--bd)":isWE?"var(--rd-bg)":"var(--bg3)",opacity:isFirst?1:0.5}}/>})}
+
+          {/* Holiday lines */}
+          {showHol&&Object.entries(HOLIDAYS).filter(([k])=>holFilter[k]).map(([country,days])=>
+            days.map(h=>{const x=dateToX(h.d);if(x===null||x<0||x>totalWidth)return null;
+              return<div key={country+h.d} style={{position:"absolute",left:x,top:0,height:rows.length*rowH,width:1,background:HOL_COLORS[country],opacity:.2,zIndex:0}} title={h.n+" ("+HOL_LABELS[country]+")"}/>
+            }))}
 
           {/* Milestone lines */}
           {(milestones||[]).map(ms=>{
@@ -238,16 +408,26 @@ function GanttView({tasks,workers,milestones,parts,contents}){
           {/* Task bars */}
           {rows.map((r,ri)=>{
             if(r.type==="header")return<div key={"hr"+ri} style={{height:rowH,background:"var(--bg3)",borderBottom:"1px solid var(--bd)"}}/>;
+            if(r.type==="task"){
+              const t=r.task;const x1=dateToX(t.start_date);let x2=dateToX(t.end_date);
+              if(x1===null)return<div key={"tr"+ri} className="gantt-row"/>;
+              if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;if(x2===null)x2=x1+dayWidth*7;
+              const w=Math.max(20,x2-x1);const bc=BAR_C[t.status]||BAR_C.waiting;
+              return<div key={"tr"+ri} className="gantt-row" style={{position:"relative",background:"var(--bg2)"}}>
+                <div className="gantt-bar" style={{left:x1,top:6,width:w,background:bc,opacity:.85}}
+                  onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})} onMouseLeave={()=>setTip(null)}>
+                  {w>60?t.task_name:""}</div>
+              </div>
+            }
             return<div key={"wr"+ri} className="gantt-row" style={{position:"relative"}}>
               {r.tasks.map((t,ti)=>{
                 const x1=dateToX(t.start_date);
                 let x2=dateToX(t.end_date);
                 if(x1===null)return null;
-                if(x2===null&&t.estimated_days)x2=x1+(t.estimated_days/7)*weekWidth;
-                if(x2===null)x2=x1+weekWidth;
+                if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;
+                if(x2===null)x2=x1+dayWidth*7;
                 const w=Math.max(20,x2-x1);
                 const bc=BAR_C[t.status]||BAR_C.waiting;
-                const cName=t.contents?.name||"";
                 return<div key={t.id} className="gantt-bar"
                   style={{left:x1,top:6,width:w,background:bc}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})}
@@ -259,6 +439,28 @@ function GanttView({tasks,workers,milestones,parts,contents}){
         </div>
       </div>
     </div>
+
+    {/* Worker popup */}
+    {workerPopup&&<div style={{position:"fixed",left:Math.min(workerPopup.x,window.innerWidth-340),top:Math.min(workerPopup.y,window.innerHeight-300),width:320,maxHeight:280,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:"var(--r)",boxShadow:"var(--sh2)",zIndex:200,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"10px 12px",borderBottom:"1px solid var(--bg3)",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div><span style={{fontSize:14,fontWeight:700}}>{workerPopup.worker.name}</span>
+          {workerPopup.worker.is_part_lead&&<span style={{color:"var(--or)",fontSize:11,marginLeft:4}}>파트장</span>}
+          <div style={{fontSize:11,color:"var(--t4)"}}>{PART_LABELS[workerPopup.worker.part_id]||workerPopup.worker.part_id} - {workerPopup.tasks.length}건</div>
+        </div>
+        <button onClick={()=>setWP(null)} style={{background:"none",border:"none",fontSize:16,color:"var(--t4)",cursor:"pointer"}}>✕</button>
+      </div>
+      <div style={{overflow:"auto",padding:"6px 12px 10px",flex:1}}>
+        {workerPopup.tasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>배정된 태스크 없음</div>:
+          workerPopup.tasks.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderBottom:"1px solid var(--bg3)"}}>
+            <D s={t.status}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,color:"var(--t1)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.task_name}</div>
+              <div style={{fontSize:10,color:"var(--t4)"}}>{t.contents?.name||""} - {t.start_date||"?"} ~ {t.end_date||"?"} - {t.estimated_days||"?"}일</div>
+            </div>
+            <span style={{fontSize:10,color:SC[t.status]||"var(--t4)",fontWeight:600,flexShrink:0}}>{SL[t.status]||t.status}</span>
+          </div>)}
+      </div>
+    </div>}
 
     {/* Tooltip */}
     {tooltip&&<div className="tooltip" style={{left:tooltip.x+12,top:tooltip.y-10}}>
@@ -274,16 +476,277 @@ function GanttView({tasks,workers,milestones,parts,contents}){
   </div>
 }
 
+/* ═══ TASK SHEET ═══ */
+function TaskSheet({tasks,workers,contents,versions}){
+  const[teamTab,setTT]=useState("all");
+  const[partFilter,setPF]=useState("all");
+  const[statusFilter,setSF]=useState("all");
+  const[assigneeFilter,setAF]=useState("all");
+  const[collapsed,setCol]=useState(null); // null = not initialized yet
+  const[partOrder,setPartOrder]=useState(null); // custom part ordering
+
+  // Group tasks by team->part->worker
+  const grouped=useMemo(()=>{
+    const wMap={};(workers||[]).forEach(w=>wMap[w.id]=w);
+    const cMap={};(contents||[]).forEach(c=>cMap[c.id]=c);
+    const rows=(tasks||[]).map(t=>{
+      const w=wMap[t.assignee_id]||{};const c=cMap[t.content_id]||t.contents||{};
+      const team=TEAM_MAP[w.part_id]||"기타";const part=PART_LABELS[w.part_id]||w.part_id||"미배정";
+      const ver=(versions||[]).find(v=>v.id===c.version_id);
+      const qaDeadline=ver?.target_date?new Date(new Date(ver.target_date).getTime()-30*24*60*60*1000):null;
+      const endD=t.end_date?new Date(t.end_date):null;
+      const risk=(!endD||!qaDeadline)?"":t.status==="done"?"안정":endD>qaDeadline?"위험":"안정";
+      return{...t,workerName:w.name||t.workers?.name||"미배정",team,part,contentName:c.name||t.contents?.name||"",contentType:c.type||"",partId:w.part_id||"",risk,qaDeadline};
+    }).filter(r=>{
+      if(teamTab!=="all"&&r.team!==teamTab)return false;
+      if(partFilter!=="all"&&r.partId!==partFilter)return false;
+      if(statusFilter!=="all"&&r.status!==statusFilter)return false;
+      if(assigneeFilter!=="all"&&r.workerName!==assigneeFilter)return false;
+      return true;
+    });
+    const g={};rows.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
+    return g;
+  },[tasks,workers,contents,teamTab,partFilter,statusFilter,assigneeFilter]);
+
+  // Initialize collapsed (all collapsed by default) and part order
+  const partKeys=useMemo(()=>Object.keys(grouped),[grouped]);
+  useEffect(()=>{if(collapsed===null&&partKeys.length>0){const c={};partKeys.forEach(k=>c[k]=true);setCol(c)}},[partKeys]);
+  useEffect(()=>{if(partOrder===null&&partKeys.length>0)setPartOrder(partKeys)},[partKeys]);
+
+  const teamKeys=[...new Set(Object.values(TEAM_MAP))].sort();
+  const assignees=[...new Set((tasks||[]).map(t=>t.workers?.name).filter(Boolean))].sort();
+  const totalFiltered=Object.values(grouped).reduce((s,arr)=>s+arr.length,0);
+  const toggleC=k=>setCol(p=>({...p,[k]:!p[k]}));
+
+  // Part reorder
+  const movePart=(part,dir)=>{
+    setPartOrder(prev=>{const arr=[...(prev||partKeys)];const i=arr.indexOf(part);if(i<0)return arr;const ni=i+dir;if(ni<0||ni>=arr.length)return arr;[arr[i],arr[ni]]=[arr[ni],arr[i]];return arr});
+  };
+  // Sorted entries
+  const sortedParts=useMemo(()=>{
+    const order=partOrder||partKeys;
+    // Include any new parts not in order
+    const all=[...order,...partKeys.filter(k=>!order.includes(k))];
+    return all.filter(k=>grouped[k]);
+  },[partOrder,partKeys,grouped]);
+
+  return<div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden"}}>
+    {/* Filters */}
+    <div style={{padding:"8px 16px",borderBottom:"1px solid var(--bd)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+      <span style={{fontSize:14,fontWeight:700}}>업무 시트</span>
+      <span style={{fontSize:12,color:"var(--t4)"}}>{totalFiltered}건</span>
+      <div style={{display:"flex",gap:4,marginLeft:8}}>
+        <button className={"bt bt-s"+(teamTab==="all"?" on":"")} onClick={()=>setTT("all")}>전체</button>
+        {teamKeys.map(t=><button key={t} className={"bt bt-s"+(teamTab===t?" on":"")} onClick={()=>setTT(t)}>{t}</button>)}
+      </div>
+      <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+        <select value={partFilter} onChange={e=>setPF(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
+          <option value="all">파트 전체</option>
+          {Object.keys(PART_LABELS).map(p=><option key={p} value={p}>{PART_LABELS[p]}</option>)}
+        </select>
+        <select value={statusFilter} onChange={e=>setSF(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
+          <option value="all">상태 전체</option>
+          <option value="progress">진행 중</option><option value="waiting">대기</option><option value="done">완료</option><option value="blocked">차단</option>
+        </select>
+        <select value={assigneeFilter} onChange={e=>setAF(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
+          <option value="all">담당자 전체</option>
+          {assignees.map(a=><option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+    </div>
+
+    {/* Table */}
+    <div style={{overflow:"auto",flex:1,padding:"0 4px"}}>
+      {/* Header */}
+      <div style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"8px 12px",borderBottom:"2px solid var(--bd)",fontSize:11,fontWeight:700,color:"var(--t3)",position:"sticky",top:0,background:"var(--bg)",zIndex:3}}>
+        <span>#</span><span>파트</span><span>담당자</span><span>카테고리</span><span>세부 내용</span><span>시작일</span><span>완료일</span><span>소요</span><span>일정 위험도</span>
+      </div>
+      {sortedParts.map((part,pi)=>{const rows=grouped[part];return<div key={part}>
+        <div style={{padding:"8px 12px",background:"var(--bg3)",cursor:"pointer",display:"flex",alignItems:"center",gap:6,borderBottom:"1px solid var(--bd)"}} onClick={()=>toggleC(part)}>
+          <span style={{fontSize:10,color:"var(--t4)"}}>{(collapsed||{})[part]?"▶":"▼"}</span>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--t1)"}}>{part}</span>
+          <B ch={rows.length+"건"} c="b-a"/>
+          <span style={{marginLeft:"auto",display:"flex",gap:2}} onClick={e=>e.stopPropagation()}>
+            {pi>0&&<button onClick={()=>movePart(part,-1)} style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,fontSize:10,color:"var(--t4)",cursor:"pointer",padding:"0 4px",lineHeight:"18px"}}>▲</button>}
+            {pi<sortedParts.length-1&&<button onClick={()=>movePart(part,1)} style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,fontSize:10,color:"var(--t4)",cursor:"pointer",padding:"0 4px",lineHeight:"18px"}}>▼</button>}
+          </span>
+        </div>
+        {!(collapsed||{})[part]&&rows.map((t,i)=>{
+          const tm=TM[t.contentType]||{};
+          return<div key={t.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12}}>
+            <span style={{color:"var(--t4)"}}>{i+1}</span>
+            <span style={{color:"var(--t3)",fontSize:11}}>{t.part}</span>
+            <span style={{color:"var(--t2)",fontSize:11}}>{t.workerName}</span>
+            <span style={{color:tm.c||"var(--t2)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tm.i||""} {t.contentName}</span>
+            <span style={{color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t.task_name}>{t.task_name}</span>
+            <span style={{fontSize:11,color:"var(--t4)"}}>{t.start_date||"-"}</span>
+            <span style={{fontSize:11,color:"var(--t4)"}}>{t.end_date||"-"}</span>
+            <span style={{fontSize:11,color:"var(--t4)",textAlign:"right"}}>{t.estimated_days?t.estimated_days+"일":"-"}</span>
+            <span style={{fontSize:10}}>{t.risk?<B ch={t.risk} c={t.risk==="위험"?"b-r":"b-g"}/>:"-"}</span>
+          </div>})}
+      </div>})}
+    </div>
+  </div>
+}
+
+/* ═══ SLOT STATUS ═══ */
+function SlotView({workers,tasks}){
+  const[teamTab,setTT]=useState("all");
+  const[selWorker,setSelW]=useState(null);
+  const[rightW,setRW]=useState(400);
+  const splitRef=useRef(null);const dragRef=useRef(false);
+  const now=new Date();
+
+  useEffect(()=>{
+    const onMove=e=>{if(!dragRef.current||!splitRef.current)return;const rect=splitRef.current.getBoundingClientRect();setRW(Math.max(280,Math.min(rect.width*0.6,rect.right-e.clientX)))};
+    const onUp=()=>{if(dragRef.current){dragRef.current=false;document.body.style.cursor="";document.body.style.userSelect=""}};
+    window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    return()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
+  },[]);
+
+  const data=useMemo(()=>{
+    const wMap={};
+    (tasks||[]).forEach(t=>{
+      if(!t.assignee_id)return;
+      if(!wMap[t.assignee_id])wMap[t.assignee_id]=[];
+      wMap[t.assignee_id].push(t);
+    });
+    const teams={};
+    (workers||[]).forEach(w=>{
+      const team=TEAM_MAP[w.part_id]||"기타";const part=PART_LABELS[w.part_id]||w.part_id;
+      if(!teams[team])teams[team]={};if(!teams[team][part])teams[team][part]=[];
+      const wTasks=wMap[w.id]||[];
+      const activeTasks=wTasks.filter(t=>t.status==="progress"||t.status==="waiting");
+      const endDates=activeTasks.filter(t=>t.end_date).map(t=>new Date(t.end_date));
+      const latestEnd=endDates.length?new Date(Math.max(...endDates)):null;
+      const freeIn=latestEnd?Math.max(0,Math.ceil((latestEnd-now)/(24*60*60*1000))):0;
+      teams[team][part].push({...w,active:activeTasks.length,allTasks:wTasks,activeTasks,freeInDays:freeIn,isFree:activeTasks.length===0});
+    });
+    return teams;
+  },[workers,tasks]);
+
+  const teamKeys=Object.keys(data).sort();
+  const filtered=teamTab==="all"?data:data[teamTab]?{[teamTab]:data[teamTab]}:{};
+
+  // Find dependency tasks
+  const depMap=useMemo(()=>{const m={};(tasks||[]).forEach(t=>{m[t.id]=t});return m},[tasks]);
+
+  return<div style={{display:"flex",flex:1,overflow:"hidden"}} ref={splitRef}>
+    {/* Left: cards */}
+    <div style={{flex:1,overflow:"auto",padding:16,minWidth:0}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+        <span style={{fontSize:15,fontWeight:700}}>슬롯 상태</span>
+        <span style={{fontSize:12,color:"var(--t4)"}}>팀/파트별 작업자 현황</span>
+        <div style={{marginLeft:"auto",display:"flex",gap:4}}>
+          <button className={"bt bt-s"+(teamTab==="all"?" on":"")} onClick={()=>setTT("all")}>전체</button>
+          {teamKeys.map(t=><button key={t} className={"bt bt-s"+(teamTab===t?" on":"")} onClick={()=>setTT(t)}>{t}</button>)}
+        </div>
+      </div>
+      {Object.entries(filtered).map(([team,parts])=><div key={team} style={{marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--t1)",padding:"6px 0",borderBottom:"2px solid var(--bd)"}}>{team}</div>
+        {Object.entries(parts).map(([part,wkrs])=>{
+          const freeNow=wkrs.filter(w=>w.isFree).length;
+          return<div key={part} style={{marginTop:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--t2)"}}>{part}</span>
+              <B ch={freeNow+"/"+wkrs.length+" 가용"} c={freeNow>0?"b-g":"b-r"}/>
+              <span style={{fontSize:10,color:"var(--t4)"}}>2주: {wkrs.filter(w=>w.freeInDays<=14).length} - 4주: {wkrs.filter(w=>w.freeInDays<=28).length} - 8주: {wkrs.filter(w=>w.freeInDays<=56).length}</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:6}}>
+              {wkrs.map(w=><div key={w.id} onClick={()=>setSelW(w)} style={{padding:"8px 10px",border:selWorker?.id===w.id?"2px solid var(--ac)":"1px solid var(--bd)",borderRadius:"var(--r)",background:w.isFree?"var(--gn-bg)":"var(--bg)",cursor:"pointer",transition:"all .12s"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:12,fontWeight:600,color:"var(--t1)"}}>{w.is_part_lead&&<span style={{color:"var(--or)",marginRight:2}}>★</span>}{w.name}</span>
+                  {w.isFree?<B ch="가용" c="b-g"/>:<B ch={w.active+"건 진행"} c={w.active>=5?"b-r":w.active>=3?"b-o":"b-a"}/>}
+                </div>
+                {!w.isFree&&<div style={{fontSize:10,color:"var(--t4)",marginTop:3}}>예상 완료: ~{w.freeInDays}일 후</div>}
+              </div>)}
+            </div>
+          </div>})}
+      </div>)}
+    </div>
+
+    {/* Resize handle */}
+    {selWorker&&<div className="resize-handle" onMouseDown={e=>{e.preventDefault();dragRef.current=true;document.body.style.cursor="col-resize";document.body.style.userSelect="none"}}/>}
+
+    {/* Right: detail */}
+    {selWorker&&<div style={{width:rightW,borderLeft:"1px solid var(--bd)",overflow:"auto",padding:16,background:"var(--bg2)",flexShrink:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:700}}>{selWorker.is_part_lead&&<span style={{color:"var(--or)",marginRight:4}}>★</span>}{selWorker.name}</div>
+          <div style={{fontSize:12,color:"var(--t3)"}}>
+            {PART_LABELS[selWorker.part_id]||selWorker.part_id} - {TEAM_MAP[selWorker.part_id]||""}
+          </div>
+          <div style={{display:"flex",gap:4,marginTop:4}}>
+            {selWorker.isFree?<B ch="가용" c="b-g"/>:<B ch={selWorker.active+"건 진행 중"} c={selWorker.active>=5?"b-r":selWorker.active>=3?"b-o":"b-a"}/>}
+            {!selWorker.isFree&&<B ch={"~"+selWorker.freeInDays+"일 후 완료"} c="b-x"/>}
+          </div>
+        </div>
+        <button onClick={()=>setSelW(null)} style={{background:"none",border:"none",fontSize:18,color:"var(--t4)",cursor:"pointer"}}>✕</button>
+      </div>
+
+      {/* Active tasks */}
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6,color:"var(--t1)"}}>진행 중 / 대기 ({selWorker.activeTasks.length})</div>
+      {selWorker.activeTasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>현재 진행 중인 작업 없음</div>:
+        selWorker.activeTasks.map(t=>{
+          const depTask=t.dependency_id?depMap[t.dependency_id]:null;
+          return<div key={t.id} style={{padding:"10px 12px",border:"1px solid var(--bd)",borderRadius:"var(--r)",background:"var(--bg)",marginBottom:6}}>
+            <div style={{fontSize:13,fontWeight:600,color:"var(--t1)",marginBottom:4}}>{t.task_name}</div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:2}}>{t.contents?.name||""}</div>
+            <div style={{display:"flex",gap:12,fontSize:11,color:"var(--t4)",marginBottom:4}}>
+              <span>시작: {t.start_date||"-"}</span>
+              <span>마감: {t.end_date||"-"}</span>
+              <span>{t.estimated_days?t.estimated_days+"일":""}</span>
+            </div>
+            <B ch={SL[t.status]||t.status} c={t.status==="progress"?"b-a":"b-x"}/>
+            {depTask&&<div style={{marginTop:6,padding:"6px 8px",background:"var(--bg3)",borderRadius:4,fontSize:11}}>
+              <div style={{color:"var(--t3)",fontWeight:600,marginBottom:2}}>선행 작업:</div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <D s={depTask.status}/><span style={{color:"var(--t2)"}}>{depTask.task_name}</span>
+                <B ch={SL[depTask.status]||depTask.status} c={depTask.status==="done"?"b-g":"b-o"}/>
+              </div>
+            </div>}
+          </div>})}
+
+      {/* Completed tasks */}
+      {(()=>{const done=selWorker.allTasks.filter(t=>t.status==="done");
+        return done.length>0&&<div style={{marginTop:12}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6,color:"var(--t3)"}}>완료 ({done.length})</div>
+          {done.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:"1px solid var(--bg3)",fontSize:12}}>
+            <D s="done"/><span style={{color:"var(--t3)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.task_name}</span>
+            <span style={{fontSize:10,color:"var(--t4)",flexShrink:0}}>{t.end_date||""}</span>
+          </div>)}
+        </div>})()}
+    </div>}
+  </div>
+}
+
 /* ═══ PIPELINE (with split layout) ═══ */
-function PipelineView({ct,vr,onRefresh}){
+function PipelineView({ct,vr,wk,onRefresh}){
+  const ownerPartMap=useMemo(()=>{const m={};(wk||[]).forEach(w=>{m[w.name]={team:TEAM_MAP[w.part_id]||"",part:PART_LABELS[w.part_id]||""}});return m},[wk]);
   const[sel,setSel]=useState(null);
   const[tasks,setTasks]=useState([]);
   const[dragId,setDragId]=useState(null);
+  const[rightW,setRightW]=useState(420);
+  const splitRef=useRef(null);
+  const draggingRef=useRef(false);
+  useEffect(()=>{
+    const onMove=e=>{if(!draggingRef.current||!splitRef.current)return;const rect=splitRef.current.getBoundingClientRect();const newW=Math.max(280,Math.min(rect.width*0.65,rect.right-e.clientX));setRightW(newW)};
+    const onUp=()=>{if(draggingRef.current){draggingRef.current=false;document.body.style.cursor="";document.body.style.userSelect="";document.querySelectorAll(".resize-handle").forEach(h=>h.classList.remove("active"))}};
+    window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    return()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
+  },[]);
 
   const g=useMemo(()=>{const m={};GATES.forEach(gt=>m[gt.id]=[]);(ct||[]).forEach(c=>{if(m[c.gate])m[c.gate].push(c)});return m},[ct]);
 
   useEffect(()=>{if(sel?.id){db.tasks(sel.id).then(setTasks).catch(()=>setTasks([]))}else{setTasks([])}},[sel?.id]);
 
+  const moveCard=async(gateId,itemId,dir)=>{
+    const items=g[gateId]||[];const idx=items.findIndex(c=>c.id===itemId);if(idx<0)return;
+    const swapIdx=idx+dir;if(swapIdx<0||swapIdx>=items.length)return;
+    const a=items[idx],b=items[swapIdx];
+    await Promise.all([db.updContent(a.id,{priority:b.priority}),db.updContent(b.id,{priority:a.priority})]);
+    onRefresh(true);
+  };
   const onDragStart=(e,item)=>{setDragId(item.id);e.dataTransfer.effectAllowed="move"};
   const onDragEnd=()=>setDragId(null);
   const onDrop=async(e,gateId)=>{
@@ -295,14 +758,14 @@ function PipelineView({ct,vr,onRefresh}){
   };
   const onDragOver=(e)=>{e.preventDefault();e.dataTransfer.dropEffect="move"};
 
-  const chgTaskSt=async(tid,st)=>{await db.updTask(tid,{status:st});setTasks(await db.tasks(sel.id));onRefresh()};
+  const chgTaskSt=async(tid,st)=>{await db.updTask(tid,{status:st});setTasks(await db.tasks(sel.id));onRefresh(true)};
   const fwdGate=async()=>{
     if(!sel)return;const gi=GATES.findIndex(g=>g.id===sel.gate);
     if(gi<GATES.length-1){const nx=GATES[gi+1].id;
       await db.logGate({content_id:sel.id,from_gate:sel.gate,to_gate:nx,approved_by:"팀장"});
       await db.updContent(sel.id,{gate:nx,updated_at:new Date().toISOString()});setSel(null);onRefresh()}};
 
-  return<div className="split">
+  return<div className="split" ref={splitRef}>
     <div className="split-left">
       <div className="pp">
         {GATES.map(gt=><div key={gt.id} className="gate-col">
@@ -311,24 +774,30 @@ function PipelineView({ct,vr,onRefresh}){
             <div style={{fontSize:11,color:"var(--t4)"}}>{gt.s} - {g[gt.id]?.length||0}건</div></div>
           <div className="gate-drop" onDragOver={onDragOver} onDrop={e=>onDrop(e,gt.id)}
             onDragEnter={e=>e.currentTarget.classList.add("over")} onDragLeave={e=>e.currentTarget.classList.remove("over")}>
-            {g[gt.id]?.map(c=>{const tm=TM[c.type]||{};const v=vr?.find(x=>x.id===c.version_id);
+            {g[gt.id]?.map((c,ci)=>{const tm=TM[c.type]||{};const v=vr?.find(x=>x.id===c.version_id);const gLen=g[gt.id].length;
               return<div key={c.id} className={"cd"+(sel?.id===c.id?" sel":"")+(dragId===c.id?" dragging":"")}
                 draggable onDragStart={e=>onDragStart(e,c)} onDragEnd={onDragEnd} onClick={()=>setSel(c)}>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
                   <span style={{fontSize:13}}>{tm.i}</span>
                   {v&&<B ch={v.label} c="b-p"/>}
                   {AC[c.alert]&&<B ch={AL[c.alert]} c={AC[c.alert]}/>}
+                  {gLen>1&&<span style={{marginLeft:"auto",display:"flex",gap:1}}>
+                    {ci>0&&<button onClick={e=>{e.stopPropagation();moveCard(gt.id,c.id,-1)}} style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,fontSize:9,color:"var(--t4)",cursor:"pointer",padding:"0 3px",lineHeight:"16px"}}>▲</button>}
+                    {ci<gLen-1&&<button onClick={e=>{e.stopPropagation();moveCard(gt.id,c.id,1)}} style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,fontSize:9,color:"var(--t4)",cursor:"pointer",padding:"0 3px",lineHeight:"16px"}}>▼</button>}
+                  </span>}
                 </div>
                 <div style={{fontSize:13,fontWeight:600,color:"var(--t1)",lineHeight:1.3,marginBottom:3}}>{c.name}</div>
-                <div style={{fontSize:11,color:"var(--t4)"}}>{c.owner||"미정"}</div>
+                <div style={{fontSize:11,color:"var(--t4)"}}>{c.owner||"미정"}{ownerPartMap[c.owner]?" - "+ownerPartMap[c.owner].part:""}</div>
               </div>})}
           </div>
         </div>)}
       </div>
     </div>
 
+    {/* Resize handle */}
+    {sel&&<div className="resize-handle" onMouseDown={e=>{e.preventDefault();draggingRef.current=true;document.body.style.cursor="col-resize";document.body.style.userSelect="none";e.currentTarget.classList.add("active")}}/>}
     {/* Right detail panel */}
-    <div className={"split-right"+(sel?"":" closed")}>
+    <div className={"split-right"+(sel?"":" closed")} style={sel?{width:rightW}:{}}>
       {sel&&(()=>{
         const tm=TM[sel.type]||{};const v=vr?.find(x=>x.id===sel.version_id);const gi=GATES.findIndex(g=>g.id===sel.gate);
         const totalDays=tasks.reduce((s,t)=>s+(t.estimated_days||0),0);
@@ -391,10 +860,10 @@ function App(){
   const[ct,setCt]=useState([]);const[vr,setVr]=useState([]);const[ms,setMs]=useState([]);const[wk,setWk]=useState([]);const[allT,setAllT]=useState([]);
   const[ld,setLd]=useState(true);const[err,setErr]=useState(null);const[fv,setFv]=useState("all");
 
-  const load=useCallback(async()=>{setLd(true);setErr(null);try{
+  const load=useCallback(async(silent)=>{if(!silent){setLd(true);setErr(null)}try{
     const[v,c,m,w,t]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[])]);
-    setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);
-  }catch(e){setErr(e.message)}setLd(false)},[]);
+    setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);if(!silent)setErr(null);
+  }catch(e){if(!silent)setErr(e.message)}if(!silent)setLd(false)},[]);
   useEffect(()=>{load()},[load]);
 
   const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
@@ -409,9 +878,12 @@ function App(){
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
         <button className="bt bt-i" onClick={load}>↻</button></div></div>
 
+    {/* Milestone Timeline */}
+    {!ld&&ms.length>0&&<MilestoneTimeline milestones={ms} versions={vr}/>}
+
     {/* Nav */}
     <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
-      {[{id:"pipeline",l:"파이프라인"},{id:"gantt",l:"간트 차트"},{id:"add",l:"+ 등록"}].map(v=>
+      {[{id:"pipeline",l:"파이프라인"},{id:"gantt",l:"간트 차트"},{id:"tasks",l:"업무 시트"},{id:"slots",l:"슬롯 상태"},{id:"add",l:"+ 등록"}].map(v=>
         <button key={v.id} className={"bt"+(view===v.id?" on":"")} onClick={()=>setV(v.id)}>{v.l}</button>)}
       {view==="pipeline"&&<div style={{marginLeft:"auto",display:"flex",gap:4}}>
         <button className={"bt bt-s"+(fv==="all"?" on":"")} onClick={()=>setFv("all")}>전체</button>
@@ -422,8 +894,10 @@ function App(){
     <div className="pn">
       {ld?<div style={{textAlign:"center",padding:60,fontSize:15,color:"var(--t3)"}}>데이터를 불러오는 중...</div>:
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
-        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} onRefresh={load}/>}
+        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} onRefresh={load}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct}/>}
+        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr}/>}
+        {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
       </>}
     </div>
