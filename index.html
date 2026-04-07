@@ -50,6 +50,24 @@
 .fg{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:580px}.fg label{font-size:12px;color:var(--t3);font-weight:500;display:block;margin-bottom:4px}
 .fg input,.fg select{font-size:14px;padding:9px 12px;background:var(--bg);border:1px solid var(--bd);border-radius:6px;color:var(--t1);width:100%;font-family:inherit}
 select option{background:var(--bg)}
+.modal-bg{position:fixed;inset:0;background:rgba(17,24,39,.5);z-index:300;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--bg);border-radius:10px;box-shadow:var(--sh2);min-width:360px;max-width:520px;max-height:80vh;overflow:auto}
+.modal-h{padding:14px 18px;border-bottom:1px solid var(--bd);font-size:15px;font-weight:700}
+.modal-b{padding:16px 18px}
+.modal-f{padding:12px 18px;border-top:1px solid var(--bd);display:flex;gap:8px;justify-content:flex-end}
+.notice{background:var(--or-bg);border:1px solid #fcd34d;border-radius:var(--r);padding:8px 14px;margin-bottom:8px;flex-shrink:0;font-size:12px}
+.notice-row{display:flex;gap:8px;align-items:center;padding:3px 0;cursor:pointer;color:var(--t2)}
+.notice-row:hover{color:var(--t1)}
+.notice-row.mine{font-weight:600}
+.notice-row.mine::before{content:"●";color:var(--rd);font-size:10px;margin-right:2px}
+.user-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg3);border-radius:14px;font-size:12px;cursor:pointer}
+.user-badge:hover{background:var(--bd)}
+.user-badge .role{font-size:10px;color:var(--t4);font-weight:600}
+.tab-row{display:flex;gap:2px;border-bottom:1px solid var(--bd);margin-bottom:10px}
+.tab-row button{padding:6px 12px;font-size:12px;border:none;background:none;color:var(--t3);cursor:pointer;font-weight:600;border-bottom:2px solid transparent;font-family:inherit}
+.tab-row button.on{color:var(--ac);border-bottom-color:var(--ac)}
+.lock-badge{display:inline-flex;align-items:center;font-size:10px;color:var(--t4)}
+.disabled-ctrl{opacity:.45;cursor:not-allowed!important;pointer-events:none}
 </style>
 </head>
 <body>
@@ -62,9 +80,32 @@ const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok)throw new Error(r.status);const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date"),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)})};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date"),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)})};
 
-const GATES=[{id:"G0",l:"Gate 0",s:"설정/방향",c:"#7c3aed"},{id:"G0a",l:"Gate 0a",s:"IP 검수",c:"#8b5cf6"},{id:"G1",l:"Gate 1",s:"컨셉 기획",c:"#4f46e5"},{id:"G1a",l:"Gate 1a",s:"구현 기획",c:"#2563eb"},{id:"G1b",l:"Gate 1b",s:"아트 요청",c:"#0284c7"},{id:"G2",l:"Gate 2",s:"구현/제작",c:"#0d9488"},{id:"G3",l:"Gate 3",s:"QA/폴리싱",c:"#d97706"},{id:"DONE",l:"릴리즈",s:"완료",c:"#059669"}];
+// G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
+const GATES=[
+  {id:"G0",l:"G0",s:"설정/방향",c:"#7c3aed",approval:"lead2"},
+  {id:"G1",l:"G1",s:"IP 검수",c:"#8b5cf6",approval:"lead2"},
+  {id:"G2",l:"G2",s:"컨셉 기획",c:"#4f46e5",approval:"lead2"},
+  {id:"G3",l:"G3",s:"구현 기획",c:"#2563eb",approval:"lead"},
+  {id:"G4",l:"G4",s:"아트 요청",c:"#0284c7",approval:"lead"},
+  {id:"G5",l:"G5",s:"구현/제작",c:"#0d9488",approval:"lead"},
+  {id:"G6",l:"G6",s:"재미검증",c:"#16a34a",approval:"lead2"},
+  {id:"G7",l:"G7",s:"QA/폴리싱",c:"#d97706",approval:"lead"},
+  {id:"DONE",l:"릴리즈",s:"완료",c:"#059669",approval:"lead"}
+];
+// 잠금 자동 진입 시작 게이트 (G7 이상)
+const LOCK_GATE_FROM="G7";
+
+// 권한 헬퍼: user = {id, name, part_id, is_lead, is_team_lead}
+function canEditContent(c,u){if(!u||!c)return false;if(u.is_team_lead)return true;if(c.locked)return false;if(!u.is_lead)return false;
+  // 본인 파트의 콘텐츠만 (owner 이름이 본인 파트 작업자인지로 매칭)
+  return true;}
+function canTransitGate(c,nextGateId,u){if(!canEditContent(c,u))return false;
+  const ng=GATES.find(g=>g.id===nextGateId);if(!ng)return false;
+  if(ng.approval==="lead2"&&!u.is_team_lead)return false;
+  return true;}
+function canEditTaskStatus(t,u){if(!u||!t)return false;if(u.is_team_lead||u.is_lead)return true;return t.assignee_id===u.id;}
 const TM={raid:{l:"레이드",c:"#dc2626",i:"⚔️"},season_quest:{l:"시즌퀘스트",c:"#7c3aed",i:"📜"},field:{l:"필드",c:"#059669",i:"🌍"},system:{l:"시스템",c:"#2563eb",i:"⚙️"},creature:{l:"크리처",c:"#ea580c",i:"🐉"},multi:{l:"멀티",c:"#db2777",i:"👥"},growth:{l:"성장",c:"#ca8a04",i:"📈"},cosmetic:{l:"코스메틱",c:"#7c3aed",i:"✨"}};
 const AC={critical:"b-r",warning:"b-o",info:"b-a"},AL={critical:"위험",warning:"주의",info:"참고"};
 const SC={done:"#059669",progress:"#2563eb",waiting:"#d1d5db",blocked:"#dc2626"},SL={done:"완료",progress:"진행 중",waiting:"대기",blocked:"차단"};
@@ -721,12 +762,15 @@ function SlotView({workers,tasks}){
 }
 
 /* ═══ PIPELINE (with split layout) ═══ */
-function PipelineView({ct,vr,wk,onRefresh}){
+function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
   const ownerPartMap=useMemo(()=>{const m={};(wk||[]).forEach(w=>{m[w.name]={team:TEAM_MAP[w.part_id]||"",part:PART_LABELS[w.part_id]||""}});return m},[wk]);
   const[sel,setSel]=useState(null);
   const[tasks,setTasks]=useState([]);
+  const[history,setHistory]=useState([]);
+  const[detailTab,setDetailTab]=useState("tasks");
   const[dragId,setDragId]=useState(null);
   const[rightW,setRightW]=useState(420);
+  const[reasonReq,setReasonReq]=useState(null); // {title, oldVal, newVal, onConfirm}
   const splitRef=useRef(null);
   const draggingRef=useRef(false);
   useEffect(()=>{
@@ -738,32 +782,84 @@ function PipelineView({ct,vr,wk,onRefresh}){
 
   const g=useMemo(()=>{const m={};GATES.forEach(gt=>m[gt.id]=[]);(ct||[]).forEach(c=>{if(m[c.gate])m[c.gate].push(c)});return m},[ct]);
 
-  useEffect(()=>{if(sel?.id){db.tasks(sel.id).then(setTasks).catch(()=>setTasks([]))}else{setTasks([])}},[sel?.id]);
+  // Jump from notice click
+  useEffect(()=>{if(jumpId){const c=(ct||[]).find(x=>x.id===jumpId);if(c)setSel(c)}},[jumpId,ct]);
+
+  useEffect(()=>{if(sel?.id){
+    db.tasks(sel.id).then(setTasks).catch(()=>setTasks([]));
+    Promise.all([db.contentChanges(sel.id),db.contentGateLog(sel.id)]).then(([ch,gl])=>{
+      const merged=[...(ch||[]).map(x=>({...x,_kind:"change"})),...(gl||[]).map(x=>({...x,_kind:"gate",field:"gate",old_value:x.from_gate,new_value:x.to_gate,changed_by:x.approved_by}))];
+      merged.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));setHistory(merged);
+    }).catch(()=>setHistory([]));
+  }else{setTasks([]);setHistory([]);setDetailTab("tasks")}},[sel?.id]);
 
   const moveCard=async(gateId,itemId,dir)=>{
+    if(!user||(!user.is_lead&&!user.is_team_lead)){alert("파트장 권한 필요");return}
     const items=g[gateId]||[];const idx=items.findIndex(c=>c.id===itemId);if(idx<0)return;
     const swapIdx=idx+dir;if(swapIdx<0||swapIdx>=items.length)return;
     const a=items[idx],b=items[swapIdx];
     await Promise.all([db.updContent(a.id,{priority:b.priority}),db.updContent(b.id,{priority:a.priority})]);
     onRefresh(true);
   };
-  const onDragStart=(e,item)=>{setDragId(item.id);e.dataTransfer.effectAllowed="move"};
+  const onDragStart=(e,item)=>{
+    if(!canEditContent(item,user)){e.preventDefault();return}
+    setDragId(item.id);e.dataTransfer.effectAllowed="move"};
   const onDragEnd=()=>setDragId(null);
-  const onDrop=async(e,gateId)=>{
+  const onDrop=(e,gateId)=>{
     e.preventDefault();if(!dragId)return;
-    const item=ct.find(c=>c.id===dragId);if(!item||item.gate===gateId)return;
-    await db.logGate({content_id:item.id,from_gate:item.gate,to_gate:gateId,approved_by:"팀장"});
-    await db.updContent(item.id,{gate:gateId,updated_at:new Date().toISOString()});
-    setDragId(null);onRefresh();
+    const item=ct.find(c=>c.id===dragId);if(!item||item.gate===gateId){setDragId(null);return}
+    if(!canTransitGate(item,gateId,user)){const ng=GATES.find(g=>g.id===gateId);alert((ng?.approval==="lead2"?"팀장 승인":"파트장 권한")+" 필요");setDragId(null);return}
+    setReasonReq({
+      title:item.name+" - 게이트 변경",
+      oldVal:GATES.find(g=>g.id===item.gate)?.l+" "+GATES.find(g=>g.id===item.gate)?.s,
+      newVal:GATES.find(g=>g.id===gateId)?.l+" "+GATES.find(g=>g.id===gateId)?.s,
+      onConfirm:async(reason)=>{
+        const lockNow=GATES.findIndex(g=>g.id===gateId)>=GATES.findIndex(g=>g.id===LOCK_GATE_FROM);
+        const patch={gate:gateId,updated_at:new Date().toISOString()};if(lockNow)patch.locked=true;
+        await db.logGate({content_id:item.id,from_gate:item.gate,to_gate:gateId,approved_by:user.name});
+        await db.updContent(item.id,patch);
+        await db.addChange({content_id:item.id,field:"gate",old_value:item.gate,new_value:gateId,reason,changed_by:user.name});
+        setDragId(null);setReasonReq(null);onRefresh();
+      }
+    });
   };
   const onDragOver=(e)=>{e.preventDefault();e.dataTransfer.dropEffect="move"};
 
-  const chgTaskSt=async(tid,st)=>{await db.updTask(tid,{status:st});setTasks(await db.tasks(sel.id));onRefresh(true)};
-  const fwdGate=async()=>{
-    if(!sel)return;const gi=GATES.findIndex(g=>g.id===sel.gate);
-    if(gi<GATES.length-1){const nx=GATES[gi+1].id;
-      await db.logGate({content_id:sel.id,from_gate:sel.gate,to_gate:nx,approved_by:"팀장"});
-      await db.updContent(sel.id,{gate:nx,updated_at:new Date().toISOString()});setSel(null);onRefresh()}};
+  const chgTaskSt=async(tid,st)=>{
+    const t=tasks.find(x=>x.id===tid);
+    if(!canEditTaskStatus(t,user)){alert("본인 태스크만 변경 가능");return}
+    await db.updTask(tid,{status:st});setTasks(await db.tasks(sel.id));onRefresh(true);
+  };
+  const fwdGate=()=>{
+    if(!sel||!user)return;const gi=GATES.findIndex(g=>g.id===sel.gate);if(gi>=GATES.length-1)return;
+    const nx=GATES[gi+1].id;
+    if(!canTransitGate(sel,nx,user)){const ng=GATES.find(g=>g.id===nx);alert((ng?.approval==="lead2"?"팀장 승인":"파트장 권한")+" 필요");return}
+    setReasonReq({
+      title:sel.name+" - 게이트 변경",
+      oldVal:GATES[gi].l+" "+GATES[gi].s,
+      newVal:GATES[gi+1].l+" "+GATES[gi+1].s,
+      onConfirm:async(reason)=>{
+        const lockNow=(gi+1)>=GATES.findIndex(g=>g.id===LOCK_GATE_FROM);
+        const patch={gate:nx,updated_at:new Date().toISOString()};if(lockNow)patch.locked=true;
+        await db.logGate({content_id:sel.id,from_gate:sel.gate,to_gate:nx,approved_by:user.name});
+        await db.updContent(sel.id,patch);
+        await db.addChange({content_id:sel.id,field:"gate",old_value:sel.gate,new_value:nx,reason,changed_by:user.name});
+        setSel(null);setReasonReq(null);onRefresh();
+      }
+    });
+  };
+  const unlockContent=()=>{
+    if(!sel||!user||!user.is_team_lead)return;
+    setReasonReq({
+      title:sel.name+" - 잠금 해제",
+      oldVal:"잠금",newVal:"해제",
+      onConfirm:async(reason)=>{
+        await db.updContent(sel.id,{locked:false});
+        await db.addChange({content_id:sel.id,field:"locked",old_value:"true",new_value:"false",reason,changed_by:user.name});
+        setReasonReq(null);onRefresh();
+      }
+    });
+  };
 
   return<div className="split" ref={splitRef}>
     <div className="split-left">
@@ -775,13 +871,17 @@ function PipelineView({ct,vr,wk,onRefresh}){
           <div className="gate-drop" onDragOver={onDragOver} onDrop={e=>onDrop(e,gt.id)}
             onDragEnter={e=>e.currentTarget.classList.add("over")} onDragLeave={e=>e.currentTarget.classList.remove("over")}>
             {g[gt.id]?.map((c,ci)=>{const tm=TM[c.type]||{};const v=vr?.find(x=>x.id===c.version_id);const gLen=g[gt.id].length;
+              const editable=canEditContent(c,user);
               return<div key={c.id} className={"cd"+(sel?.id===c.id?" sel":"")+(dragId===c.id?" dragging":"")}
-                draggable onDragStart={e=>onDragStart(e,c)} onDragEnd={onDragEnd} onClick={()=>setSel(c)}>
+                draggable={editable} onDragStart={e=>onDragStart(e,c)} onDragEnd={onDragEnd} onClick={()=>setSel(c)}
+                style={{cursor:editable?"pointer":"pointer",borderColor:c.locked?"#fcd34d":undefined}}>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
                   <span style={{fontSize:13}}>{tm.i}</span>
                   {v&&<B ch={v.label} c="b-p"/>}
+                  {c.target_build&&<B ch={c.target_build} c="b-a"/>}
+                  {c.locked&&<span title="잠금" style={{fontSize:11}}>🔒</span>}
                   {AC[c.alert]&&<B ch={AL[c.alert]} c={AC[c.alert]}/>}
-                  {gLen>1&&<span style={{marginLeft:"auto",display:"flex",gap:1}}>
+                  {gLen>1&&editable&&<span style={{marginLeft:"auto",display:"flex",gap:1}}>
                     {ci>0&&<button onClick={e=>{e.stopPropagation();moveCard(gt.id,c.id,-1)}} style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,fontSize:9,color:"var(--t4)",cursor:"pointer",padding:"0 3px",lineHeight:"16px"}}>▲</button>}
                     {ci<gLen-1&&<button onClick={e=>{e.stopPropagation();moveCard(gt.id,c.id,1)}} style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,fontSize:9,color:"var(--t4)",cursor:"pointer",padding:"0 3px",lineHeight:"16px"}}>▼</button>}
                   </span>}
@@ -801,15 +901,19 @@ function PipelineView({ct,vr,wk,onRefresh}){
       {sel&&(()=>{
         const tm=TM[sel.type]||{};const v=vr?.find(x=>x.id===sel.version_id);const gi=GATES.findIndex(g=>g.id===sel.gate);
         const totalDays=tasks.reduce((s,t)=>s+(t.estimated_days||0),0);
+        const nextGate=gi<GATES.length-1?GATES[gi+1]:null;
+        const canFwd=nextGate&&canTransitGate(sel,nextGate.id,user);
         return<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
             <div style={{fontSize:16,fontWeight:700,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
               <span>{tm.i}</span>{sel.name}
+              {sel.locked&&<span title="잠금" style={{fontSize:14}}>🔒</span>}
             </div>
             <button onClick={()=>setSel(null)} style={{background:"none",border:"none",fontSize:18,color:"var(--t4)",cursor:"pointer"}}>✕</button>
           </div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
             {v&&<B ch={v.label+" · "+v.target_date} c="b-p"/>}
+            {sel.target_build&&<B ch={"빌드 "+sel.target_build} c="b-a"/>}
             {AC[sel.alert]&&<B ch={AL[sel.alert]} c={AC[sel.alert]}/>}
             <B ch={"P"+sel.priority} c="b-x"/>
           </div>
@@ -817,29 +921,56 @@ function PipelineView({ct,vr,wk,onRefresh}){
 
           {/* Gate progress + forward */}
           <div style={{display:"flex",gap:2,marginBottom:8}}>{GATES.map((g,i)=><div key={g.id} style={{flex:1,height:4,borderRadius:2,background:i<=gi?g.c:"var(--bg3)"}}/>)}</div>
-          {gi<GATES.length-1&&<button className="bt bt-g" onClick={fwdGate} style={{width:"100%",marginBottom:12}}>{GATES[gi+1].l}로 전환 →</button>}
+          {nextGate&&<button className={"bt bt-g"+(canFwd?"":" disabled-ctrl")} onClick={canFwd?fwdGate:undefined}
+            title={canFwd?"":sel.locked?"팀장 잠금 해제 필요":nextGate.approval==="lead2"?"팀장 승인 필요":"파트장 권한 필요"}
+            style={{width:"100%",marginBottom:8}}>{nextGate.l} {nextGate.s}로 전환 →</button>}
+          {sel.locked&&user?.is_team_lead&&<button className="bt" onClick={unlockContent} style={{width:"100%",marginBottom:12}}>🔓 잠금 해제</button>}
 
-          {/* Tasks */}
-          <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>태스크 ({tasks.length})</div>
-          {tasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>등록된 태스크 없음</div>:
-            tasks.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderBottom:"1px solid var(--bg3)"}}>
-              <D s={t.status}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.task_name}</div>
-                <div style={{fontSize:10,color:"var(--t4)"}}>{t.part_id} · {t.estimated_days||"?"}일</div>
-              </div>
-              <select value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)} style={{fontSize:11,padding:"2px 4px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit"}}>
-                <option value="waiting">대기</option><option value="progress">진행</option><option value="done">완료</option><option value="blocked">차단</option></select>
+          {/* Tabs */}
+          <div className="tab-row">
+            <button className={detailTab==="tasks"?"on":""} onClick={()=>setDetailTab("tasks")}>태스크 ({tasks.length})</button>
+            <button className={detailTab==="history"?"on":""} onClick={()=>setDetailTab("history")}>이력 ({history.length})</button>
+          </div>
+
+          {detailTab==="tasks"&&(tasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>등록된 태스크 없음</div>:
+            tasks.map(t=>{const ok=canEditTaskStatus(t,user);
+              return<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderBottom:"1px solid var(--bg3)"}}>
+                <D s={t.status}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.task_name}</div>
+                  <div style={{fontSize:10,color:"var(--t4)"}}>{t.part_id} · {t.estimated_days||"?"}일</div>
+                </div>
+                <select disabled={!ok} value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)}
+                  title={ok?"":"본인 태스크만 변경 가능"}
+                  style={{fontSize:11,padding:"2px 4px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5}}>
+                  <option value="waiting">대기</option><option value="progress">진행</option><option value="done">완료</option><option value="blocked">차단</option></select>
+              </div>}))}
+
+          {detailTab==="history"&&(history.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>변경 이력 없음</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {history.map((h,i)=>{const d=new Date(h.created_at);const dt=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+                const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",target_build:"타겟 빌드",gate:"게이트",locked:"잠금"};
+                return<div key={h.id||i} style={{padding:"8px 10px",border:"1px solid var(--bd)",borderRadius:6,background:"var(--bg)",fontSize:12}}>
+                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
+                    <span style={{color:"var(--t4)",fontSize:11}}>{dt}</span>
+                    <span style={{color:"var(--t2)",fontWeight:600}}>{h.changed_by||"-"}</span>
+                    {h._kind==="gate"&&<B ch="게이트 전환" c="b-a"/>}
+                  </div>
+                  <div style={{color:"var(--t1)"}}>{fmtField[h.field]||h.field}: <span style={{color:"var(--t4)"}}>{h.old_value||"-"}</span> → <span style={{color:"var(--ac)",fontWeight:600}}>{h.new_value||"-"}</span></div>
+                  {h.reason&&<div style={{color:"var(--t3)",marginTop:3,fontStyle:"italic"}}>"{h.reason}"</div>}
+                </div>})}
             </div>)}
         </div>
       })()}
     </div>
+    {reasonReq&&<ReasonModal title={reasonReq.title} oldVal={reasonReq.oldVal} newVal={reasonReq.newVal}
+      onSave={reasonReq.onConfirm} onClose={()=>setReasonReq(null)}/>}
   </div>
 }
 
 /* ═══ ADD FORM ═══ */
 function AddForm({vr,onDone}){
-  const[f,setF]=useState({name:"",type:"field",gate:"G0",version_id:"launch",owner:"",priority:2,doc_status:"개발 전",alert:"none"});
+  const[f,setF]=useState({name:"",type:"field",gate:"G0",version_id:"launch",owner:"",priority:2,doc_status:"개발 전",alert:"none",target_build:""});
   const[msg,setMsg]=useState("");const[sv,setSv]=useState(false);
   const go=async()=>{if(!f.name.trim()){setMsg("콘텐츠명 입력");return}setSv(true);setMsg("");try{await db.addContent(f);setMsg("등록 완료!");setF({...f,name:"",owner:""});onDone()}catch(e){setMsg("오류: "+e.message)}setSv(false)};
   return<div style={{padding:20}}><div style={{fontSize:17,fontWeight:700,marginBottom:14}}>새 콘텐츠 등록</div>
@@ -847,27 +978,130 @@ function AddForm({vr,onDone}){
       <div><label>콘텐츠명 *</label><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="예: 시즌3 현상수배"/></div>
       <div><label>담당자</label><input value={f.owner} onChange={e=>setF({...f,owner:e.target.value})} placeholder="예: 남경훈"/></div>
       <div><label>유형</label><select value={f.type} onChange={e=>setF({...f,type:e.target.value})}>{Object.entries(TM).map(([k,v])=><option key={k} value={k}>{v.i} {v.l}</option>)}</select></div>
-      <div><label>Gate</label><select value={f.gate} onChange={e=>setF({...f,gate:e.target.value})}>{GATES.map(g=><option key={g.id} value={g.id}>{g.l}</option>)}</select></div>
+      <div><label>Gate</label><select value={f.gate} onChange={e=>setF({...f,gate:e.target.value})}>{GATES.map(g=><option key={g.id} value={g.id}>{g.l} {g.s}</option>)}</select></div>
       <div><label>목표 버전</label><select value={f.version_id} onChange={e=>setF({...f,version_id:e.target.value})}>{(vr||[]).map(v=><option key={v.id} value={v.id}>{v.label} ({v.target_date})</option>)}</select></div>
+      <div><label>타겟 빌드</label><input value={f.target_build} onChange={e=>setF({...f,target_build:e.target.value})} placeholder="예: 런칭 / 시즌1"/></div>
       <div><label>우선순위</label><select value={f.priority} onChange={e=>setF({...f,priority:+e.target.value})}><option value={1}>1 - 최우선</option><option value={2}>2 - 높음</option><option value={3}>3 - 보통</option></select></div>
     </div>
     <div className="fa"><button className="bt bt-g" onClick={go} disabled={sv}>{sv?"저장 중...":"등록하기"}</button>{msg&&<span style={{fontSize:13,color:msg.includes("오류")?"var(--rd)":"var(--gn)"}}>{msg}</span>}</div></div>
+}
+
+/* ═══ USER MODAL ═══ */
+function UserModal({workers,onPick,onClose,canClose}){
+  const[sel,setSel]=useState("");
+  const sorted=useMemo(()=>{const arr=[...(workers||[])];arr.sort((a,b)=>{
+    const al=a.is_team_lead?2:a.is_part_lead?1:0;const bl=b.is_team_lead?2:b.is_part_lead?1:0;
+    if(bl!==al)return bl-al;
+    if(a.part_id!==b.part_id)return(a.part_id||"").localeCompare(b.part_id||"");
+    return(a.name||"").localeCompare(b.name||"")});return arr},[workers]);
+  return<div className="modal-bg" onClick={canClose?onClose:undefined}>
+    <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">사용자 선택</div>
+      <div className="modal-b">
+        <div style={{fontSize:12,color:"var(--t3)",marginBottom:10}}>본인을 선택해주세요. 권한(파트장/팀장)에 따라 편집 가능 범위가 달라집니다.</div>
+        <select value={sel} onChange={e=>setSel(e.target.value)} style={{width:"100%",fontSize:13,padding:"9px 12px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"inherit"}}>
+          <option value="">-- 선택 --</option>
+          {sorted.map(w=><option key={w.id} value={w.id}>
+            {w.is_team_lead?"★★ ":w.is_part_lead?"★ ":""}{w.name} ({PART_LABELS[w.part_id]||w.part_id||"-"}{w.is_team_lead?" / 팀장":w.is_part_lead?" / 파트장":""})
+          </option>)}
+        </select>
+      </div>
+      <div className="modal-f">
+        {canClose&&<button className="bt" onClick={onClose}>취소</button>}
+        <button className="bt bt-g" disabled={!sel} onClick={()=>{const w=sorted.find(x=>x.id===sel);if(w)onPick(w)}}>선택</button>
+      </div>
+    </div>
+  </div>
+}
+
+/* ═══ REASON MODAL ═══ */
+function ReasonModal({title,oldVal,newVal,onSave,onClose}){
+  const[reason,setReason]=useState("");
+  return<div className="modal-bg" onClick={onClose}>
+    <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">{title}</div>
+      <div className="modal-b">
+        <div style={{fontSize:12,color:"var(--t3)",marginBottom:8}}>변경 내용</div>
+        <div style={{fontSize:13,padding:"8px 12px",background:"var(--bg3)",borderRadius:6,marginBottom:14}}>
+          <span style={{color:"var(--t4)"}}>{oldVal||"(없음)"}</span>
+          <span style={{margin:"0 8px",color:"var(--t4)"}}>→</span>
+          <span style={{color:"var(--ac)",fontWeight:600}}>{newVal||"(없음)"}</span>
+        </div>
+        <div style={{fontSize:12,color:"var(--t3)",marginBottom:6}}>변경 사유 <span style={{color:"var(--rd)"}}>*</span></div>
+        <textarea autoFocus value={reason} onChange={e=>setReason(e.target.value)} placeholder="예: 시나리오 검수 지연으로 일정 조정"
+          style={{width:"100%",minHeight:80,fontSize:13,padding:"9px 12px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"inherit",resize:"vertical"}}/>
+      </div>
+      <div className="modal-f">
+        <button className="bt" onClick={onClose}>취소</button>
+        <button className="bt bt-g" disabled={!reason.trim()} onClick={()=>onSave(reason.trim())}>저장</button>
+      </div>
+    </div>
+  </div>
+}
+
+/* ═══ NOTICE BAR ═══ */
+function NoticeBar({changes,user,onJump}){
+  const[expanded,setExp]=useState(false);
+  const[dismissed,setDis]=useState(()=>{try{return JSON.parse(localStorage.getItem("pipeline_dismissed_changes")||"[]")}catch(e){return[]}});
+  const recent=useMemo(()=>{const cutoff=Date.now()-7*24*60*60*1000;
+    return(changes||[]).filter(c=>new Date(c.created_at).getTime()>cutoff&&!dismissed.includes(c.id))},[changes,dismissed]);
+  if(recent.length===0)return null;
+  const visible=expanded?recent:recent.slice(0,2);
+  const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",target_build:"타겟 빌드",gate:"게이트",locked:"잠금"};
+  const fmt=(c)=>{const d=new Date(c.created_at);const md=(d.getMonth()+1)+"-"+String(d.getDate()).padStart(2,"0");
+    const cn=c.contents?.name||"(콘텐츠)";const own=c.contents?.owner||"";
+    const isMine=user&&(own===user.name||c.changed_by===user.name);
+    return{md,cn,isMine,fld:fmtField[c.field]||c.field,old:c.old_value||"-",nv:c.new_value||"-",reason:c.reason,by:c.changed_by}};
+  return<div className="notice">
+    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+      <span style={{fontWeight:700,color:"var(--or)"}}>📢 최근 일정 변경 ({recent.length})</span>
+      <button onClick={()=>setExp(!expanded)} style={{marginLeft:"auto",background:"none",border:"1px solid var(--bd)",borderRadius:4,padding:"1px 8px",fontSize:11,cursor:"pointer",color:"var(--t3)"}}>{expanded?"접기":"전체 보기"}</button>
+      <button onClick={()=>{const ids=recent.map(r=>r.id);const next=[...dismissed,...ids];localStorage.setItem("pipeline_dismissed_changes",JSON.stringify(next));setDis(next)}} style={{background:"none",border:"1px solid var(--bd)",borderRadius:4,padding:"1px 8px",fontSize:11,cursor:"pointer",color:"var(--t3)"}}>모두 확인</button>
+    </div>
+    {visible.map(c=>{const f=fmt(c);return<div key={c.id} className={"notice-row"+(f.isMine?" mine":"")} onClick={()=>onJump&&onJump(c.content_id)}>
+      <span style={{color:"var(--t4)",fontSize:11,minWidth:34}}>{f.md}</span>
+      <span style={{fontWeight:600}}>{f.cn}</span>
+      <span style={{color:"var(--t4)"}}>·</span>
+      <span>{f.fld}: {f.old} → {f.nv}</span>
+      <span style={{color:"var(--t4)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>({f.reason})</span>
+      <span style={{color:"var(--t4)",fontSize:11}}>- {f.by}</span>
+    </div>})}
+  </div>
 }
 
 /* ═══ MAIN ═══ */
 function App(){
   const[view,setV]=useState("pipeline");
   const[ct,setCt]=useState([]);const[vr,setVr]=useState([]);const[ms,setMs]=useState([]);const[wk,setWk]=useState([]);const[allT,setAllT]=useState([]);
+  const[changes,setChanges]=useState([]);
   const[ld,setLd]=useState(true);const[err,setErr]=useState(null);const[fv,setFv]=useState("all");
+  const[user,setUser]=useState(null);const[userModal,setUserModal]=useState(false);
+  const[jumpId,setJumpId]=useState(null);
+
+  // Resolve user from localStorage once workers loaded
+  useEffect(()=>{if(wk.length===0)return;
+    const uid=localStorage.getItem("pipeline_user_id");
+    if(!uid){setUserModal(true);return}
+    const w=wk.find(x=>x.id===uid);
+    if(!w){setUserModal(true);return}
+    setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead});
+  },[wk]);
 
   const load=useCallback(async(silent)=>{if(!silent){setLd(true);setErr(null)}try{
-    const[v,c,m,w,t]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[])]);
-    setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);if(!silent)setErr(null);
+    const[v,c,m,w,t,ch]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[]),db.recentChanges()]);
+    setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);setChanges(ch||[]);if(!silent)setErr(null);
   }catch(e){if(!silent)setErr(e.message)}if(!silent)setLd(false)},[]);
   useEffect(()=>{load()},[load]);
 
+  const pickUser=(w)=>{localStorage.setItem("pipeline_user_id",w.id);
+    setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead});setUserModal(false)};
+
+  const handleJump=(contentId)=>{setV("pipeline");setJumpId(contentId);setTimeout(()=>setJumpId(null),1500)};
+
   const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
   const st=useMemo(()=>({t:ct.length,cr:ct.filter(c=>c.alert==="critical").length,w:ct.filter(c=>c.alert==="warning").length}),[ct]);
+
+  const roleLabel=user?(user.is_team_lead?"팀장":user.is_lead?"파트장":"작업자"):"";
 
   return<div className="app">
     {/* Header */}
@@ -876,7 +1110,13 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
+        {user&&<span className="user-badge" onClick={()=>setUserModal(true)} title="사용자 변경">
+          {user.is_team_lead?"★★":user.is_lead?"★":""}{user.name}<span className="role">{roleLabel}</span>
+        </span>}
         <button className="bt bt-i" onClick={load}>↻</button></div></div>
+
+    {/* Notice */}
+    {!ld&&<NoticeBar changes={changes} user={user} onJump={handleJump}/>}
 
     {/* Milestone Timeline */}
     {!ld&&ms.length>0&&<MilestoneTimeline milestones={ms} versions={vr}/>}
@@ -894,13 +1134,15 @@ function App(){
     <div className="pn">
       {ld?<div style={{textAlign:"center",padding:60,fontSize:15,color:"var(--t3)"}}>데이터를 불러오는 중...</div>:
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
-        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} onRefresh={load}/>}
+        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct}/>}
         {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
       </>}
     </div>
+
+    {userModal&&wk.length>0&&<UserModal workers={wk} onPick={pickUser} onClose={()=>setUserModal(false)} canClose={!!user}/>}
   </div>
 }
 ReactDOM.render(<App/>,document.getElementById("app"));
