@@ -75,12 +75,13 @@ select option{background:var(--bg)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <script type="text/babel">
 const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok)throw new Error(r.status);const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date"),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)})};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date"),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null)};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -1070,6 +1071,190 @@ function NoticeBar({changes,user,onJump}){
 }
 
 /* ═══ MAIN ═══ */
+/* ═══ PHASE D: SHEET IMPORT ═══ */
+const GATE_MAP={'설정/방향':'G0','IP 검수':'G1','컨셉 기획':'G2','컨셉':'G2','구현 기획':'G3','아트 요청':'G4','구현/제작':'G5','구현':'G5','재미검증':'G6','QA/폴리싱':'G7','QA':'G7','완료':'DONE','릴리즈':'DONE'};
+function normalizeGate(raw){if(!raw)return null;const desc=String(raw).split(':').pop().trim();return GATE_MAP[desc]||null}
+const STATUS_MAP={'시작 전':'waiting','진행 중':'progress','완료됨':'done','완료':'done','보류':'blocked','차단':'blocked','중단':'blocked'};
+function normalizeStatus(raw){if(!raw)return 'waiting';return STATUS_MAP[String(raw).trim()]||'waiting'}
+function normalizeDate(raw){if(!raw)return null;const s=String(raw).trim();const m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);if(!m)return null;return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`}
+const RELATED_PART_MAP={'전투':'combat','전투 파트':'combat','전투파트':'combat','레벨':'level','레벨 파트':'level','필드':'field','필드 파트':'field','퀘스트':'quest','퀘스트(내러티브)':'quest','퀘스트(내러티브) 파트':'quest','아트':'art','UX':'ux','클래스':'class','클래스 파트':'class'};
+function normalizeRelatedPart(raw){if(!raw)return null;return RELATED_PART_MAP[String(raw).trim()]||null}
+const INDENT_PREFIXES=['└','↳','ㄴ'];
+function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'');for(const p of INDENT_PREFIXES)if(s.startsWith(p)){s=s.slice(p.length).trim();break}return s}
+function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;for(const p of INDENT_PREFIXES)if(s.trimStart().startsWith(p))return true;return false}
+const HEADER_KEYS=['콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','작업 일수','기획서','지라 일감','비고'];
+function findHeaderRow(rows){for(let i=0;i<Math.min(5,rows.length);i++){const r=rows[i].map(c=>String(c||'').trim());if(r.includes('콘텐츠명')&&r.includes('게이트'))return i}return -1}
+function parseSheet(file,partId){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=(e)=>{try{
+  const wb=XLSX.read(e.target.result,{type:'array'});
+  const sheetName=wb.SheetNames.find(n=>n.includes('업무 목록'))||wb.SheetNames.find(n=>n.includes('업무 리스트'))||wb.SheetNames[0];
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:''});
+  const hi=findHeaderRow(rows);if(hi<0)throw new Error('헤더 행을 찾을 수 없음 (콘텐츠명/게이트 컬럼 필요)');
+  const header=rows[hi].map(c=>String(c||'').trim());const colIdx={};HEADER_KEYS.forEach(k=>{colIdx[k]=header.indexOf(k)});
+  const dataRows=rows.slice(hi+1).filter(r=>r.some(c=>String(c||'').trim()));
+  resolve(buildContentsAndTasks(dataRows,colIdx,partId));
+}catch(err){reject(err)}};reader.onerror=reject;reader.readAsArrayBuffer(file)})}
+function buildContentsAndTasks(rows,ci,partId){
+  const contents=[],tasks=[];let curContent=null,curParentTask=null;
+  for(const r of rows){
+    const get=(k)=>ci[k]>=0?String(r[ci[k]]||'').trim():'';
+    const rawTitle=get('세부 내용');const isChild=isChildRow(rawTitle);const contentName=get('콘텐츠명');
+    if(contentName&&!isChild){
+      curContent={source_key:`${partId}::${contentName}`,name:contentName,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:get('담당자')||null,start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
+      contents.push(curContent);curParentTask=null;
+    }
+    if(!curContent)continue;
+    const taskTitle=stripIndent(rawTitle);if(!taskTitle)continue;
+    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,assignee_name:get('담당자')||curContent.owner,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(get('작업 시작 일정'))||curContent.start_date,end_date:normalizeDate(get('작업 완료 일정'))||curContent.end_date,days:parseInt(get('작업 일수'),10)||null,jira_url:get('지라 일감')||null,notes:get('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null};
+    tasks.push(task);
+    if(!isChild)curParentTask=task;
+  }
+  return{contents,tasks};
+}
+
+// 파트별 기본 type (기존 contents.type enum과의 호환)
+const PART_DEFAULT_TYPE={combat:"system",level:"system",field:"field",quest:"season_quest"};
+function buildContentPayload(c,targetBuild,now){
+  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,target_build:targetBuild,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
+}
+function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
+  const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
+  const w=workerByName.get(t.assignee_name);
+  return{content_id:cid,title:t.title,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days:t.days,jira_url:t.jira_url,notes:t.notes,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
+}
+
+function ImportModal({user,workers,onClose,onDone}){
+  const PARTS=[{id:'combat',label:'전투'},{id:'level',label:'레벨'},{id:'field',label:'필드'},{id:'quest',label:'퀘스트'}];
+  const allowedParts=user.is_team_lead?PARTS:PARTS.filter(p=>p.id===user.part_id);
+  const[partId,setPartId]=useState(allowedParts[0]?.id||'combat');
+  const[file,setFile]=useState(null);
+  const[targetBuild,setTargetBuild]=useState('아시아 빌드');
+  const[parsed,setParsed]=useState(null);
+  const[diff,setDiff]=useState(null);
+  const[running,setRunning]=useState(false);
+  const[error,setError]=useState(null);
+  const[done,setDone]=useState(null);
+
+  const handleFile=async(f)=>{
+    setFile(f);setParsed(null);setDiff(null);setError(null);if(!f)return;
+    try{
+      const p=await parseSheet(f,partId);setParsed(p);
+      const prefix=partId+'::';
+      const[existingC,existingT]=await Promise.all([db.contentsBySrc(prefix),db.tasksBySrc(prefix)]);
+      const exMapC=new Map((existingC||[]).map(c=>[c.source_key,c]));
+      const exMapT=new Map((existingT||[]).map(t=>[t.source_key,t]));
+      const cAdd=[],cUpd=[],cLocked=[];
+      for(const c of p.contents){const ex=exMapC.get(c.source_key);if(!ex)cAdd.push(c);else if(ex.locked)cLocked.push(c);else cUpd.push({...c,_id:ex.id})}
+      const tAdd=[],tUpd=[];
+      for(const t of p.tasks){const ex=exMapT.get(t.source_key);if(!ex)tAdd.push(t);else tUpd.push({...t,_id:ex.id})}
+      const workerNames=new Set((workers||[]).map(w=>w.name));
+      const unknown=new Set();
+      for(const t of p.tasks){if(t.assignee_name&&!workerNames.has(t.assignee_name))unknown.add(t.assignee_name)}
+      const unknownGate=p.contents.filter(c=>!c.gate).map(c=>c.name);
+      setDiff({cAdd,cUpd,cLocked,tAdd,tUpd,unknownWorkers:[...unknown],unknownGate});
+    }catch(e){setError(e.message)}
+  };
+
+  const run=async()=>{
+    if(!parsed||!diff)return;
+    if(diff.unknownWorkers.length>0){setError("미인식 담당자가 있습니다. 먼저 workers 테이블을 정리하세요: "+diff.unknownWorkers.slice(0,5).join(", "));return}
+    setRunning(true);setError(null);
+    try{
+      const workerByName=new Map((workers||[]).map(w=>[w.name,w]));
+      const now=new Date().toISOString();
+      // 1. 신규 콘텐츠
+      const insertedC=[];
+      if(diff.cAdd.length>0){
+        const payload=diff.cAdd.map(c=>buildContentPayload(c,targetBuild,now));
+        const res=await db.bulkContents(payload);
+        insertedC.push(...(res||[]));
+      }
+      // 2. 갱신 콘텐츠
+      for(const c of diff.cUpd){
+        const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:targetBuild,imported_at:now};
+        await db.updContent(c._id,upd);
+        await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
+      }
+      // 콘텐츠 id 매핑
+      const contentIdByKey=new Map();
+      for(const c of insertedC)contentIdByKey.set(c.source_key,c.id);
+      for(const c of diff.cUpd)contentIdByKey.set(c.source_key,c._id);
+      // 3. 태스크 - 부모 먼저, 자식 나중
+      const taskIdByKey=new Map();
+      const exT2=await db.tasksBySrc(partId+'::');
+      for(const t of(exT2||[]))taskIdByKey.set(t.source_key,t.id);
+
+      const newParents=diff.tAdd.filter(t=>!t._is_child);
+      const newChildren=diff.tAdd.filter(t=>t._is_child);
+      const updParents=diff.tUpd.filter(t=>!t._is_child);
+      const updChildren=diff.tUpd.filter(t=>t._is_child);
+
+      if(newParents.length>0){
+        const payload=newParents.map(t=>buildTaskPayload(t,contentIdByKey,workerByName,null,now)).filter(x=>x);
+        if(payload.length>0){const res=await db.bulkTasks(payload);for(const r of(res||[]))taskIdByKey.set(r.source_key,r.id)}
+      }
+      for(const t of updParents){const p=buildTaskPayload(t,contentIdByKey,workerByName,null,now);if(p)await db.updTask(t._id,p)}
+      if(newChildren.length>0){
+        const payload=newChildren.map(t=>{const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;return buildTaskPayload(t,contentIdByKey,workerByName,pid,now)}).filter(x=>x);
+        if(payload.length>0)await db.bulkTasks(payload);
+      }
+      for(const t of updChildren){const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;const p=buildTaskPayload(t,contentIdByKey,workerByName,pid,now);if(p)await db.updTask(t._id,p)}
+
+      await db.addImportRun({part_id:partId,file_name:file.name,imported_by:user.name,contents_added:diff.cAdd.length,contents_updated:diff.cUpd.length,tasks_added:diff.tAdd.length,tasks_updated:diff.tUpd.length});
+      setDone({c:diff.cAdd.length+diff.cUpd.length,t:diff.tAdd.length+diff.tUpd.length});
+      onDone&&onDone();
+    }catch(e){setError("import 실패: "+e.message)}
+    setRunning(false);
+  };
+
+  return<div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget&&!running)onClose()}}>
+    <div className="modal" style={{minWidth:480,maxWidth:580}}>
+      <div className="modal-h">📥 시트 가져오기</div>
+      <div className="modal-b">
+        {!done&&<>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>파트</label>
+            <select value={partId} onChange={e=>{setPartId(e.target.value);setFile(null);setParsed(null);setDiff(null)}}
+              style={{display:"block",width:"100%",padding:8,marginTop:4,border:"1px solid var(--bd)",borderRadius:6}}>
+              {allowedParts.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>목표 빌드</label>
+            <input value={targetBuild} onChange={e=>setTargetBuild(e.target.value)}
+              style={{display:"block",width:"100%",padding:8,marginTop:4,border:"1px solid var(--bd)",borderRadius:6}}/>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>xlsx 파일</label>
+            <input type="file" accept=".xlsx" onChange={e=>handleFile(e.target.files[0])}
+              style={{display:"block",marginTop:4,fontSize:12}}/>
+          </div>
+          {parsed&&diff&&<div style={{marginTop:14,padding:12,background:"var(--bg2)",borderRadius:6,fontSize:12,lineHeight:1.7}}>
+            <div style={{fontWeight:700,marginBottom:6}}>미리보기 (DB 저장 안 함)</div>
+            <div>콘텐츠 {parsed.contents.length}건 (신규 {diff.cAdd.length}, 갱신 {diff.cUpd.length}{diff.cLocked.length>0?`, 잠금 ${diff.cLocked.length}`:''})</div>
+            <div>태스크 {parsed.tasks.length}건 (신규 {diff.tAdd.length}, 갱신 {diff.tUpd.length})</div>
+            {diff.unknownWorkers.length>0&&<div style={{marginTop:8,color:"var(--rd)"}}>⚠ 미인식 담당자 {diff.unknownWorkers.length}명: {diff.unknownWorkers.slice(0,5).join(", ")}{diff.unknownWorkers.length>5?'...':''}</div>}
+            {diff.unknownGate.length>0&&<div style={{marginTop:4,color:"var(--or)"}}>⚠ 미인식 게이트 {diff.unknownGate.length}건: 기본 G0 적용</div>}
+          </div>}
+          {error&&<div style={{marginTop:10,padding:10,background:"var(--rd-bg)",color:"var(--rd)",borderRadius:6,fontSize:12}}>{error}</div>}
+        </>}
+        {done&&<div style={{padding:14,background:"var(--gn-bg)",color:"var(--gn)",borderRadius:6,fontWeight:600}}>
+          ✓ Import 완료! 콘텐츠 {done.c}건, 태스크 {done.t}건 처리됨.
+        </div>}
+      </div>
+      <div className="modal-f">
+        {!done&&<>
+          <button className="bt" onClick={onClose} disabled={running}>취소</button>
+          <button className={"bt"+((!diff||running||(diff&&diff.unknownWorkers.length>0))?" disabled-ctrl":"")} onClick={run}
+            style={{background:"var(--ac)",color:"#fff",borderColor:"var(--ac)"}}>
+            {running?"가져오는 중...":"가져오기 실행"}
+          </button>
+        </>}
+        {done&&<button className="bt" onClick={onClose}>닫기</button>}
+      </div>
+    </div>
+  </div>;
+}
+
 function App(){
   const[view,setV]=useState("pipeline");
   const[ct,setCt]=useState([]);const[vr,setVr]=useState([]);const[ms,setMs]=useState([]);const[wk,setWk]=useState([]);const[allT,setAllT]=useState([]);
@@ -1077,6 +1262,7 @@ function App(){
   const[ld,setLd]=useState(true);const[err,setErr]=useState(null);const[fv,setFv]=useState("all");
   const[user,setUser]=useState(null);const[userModal,setUserModal]=useState(false);
   const[jumpId,setJumpId]=useState(null);
+  const[importModal,setImportModal]=useState(false);
 
   // Resolve user from localStorage once workers loaded
   useEffect(()=>{if(wk.length===0)return;
@@ -1110,6 +1296,7 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
+        {user&&(user.is_lead||user.is_team_lead)&&<button className="bt bt-s" onClick={()=>setImportModal(true)} title="xlsx 시트 가져오기">📥 시트 가져오기</button>}
         {user&&<span className="user-badge" onClick={()=>setUserModal(true)} title="사용자 변경">
           {user.is_team_lead?"★★":user.is_lead?"★":""}{user.name}<span className="role">{roleLabel}</span>
         </span>}
@@ -1143,6 +1330,7 @@ function App(){
     </div>
 
     {userModal&&wk.length>0&&<UserModal workers={wk} onPick={pickUser} onClose={()=>setUserModal(false)} canClose={!!user}/>}
+    {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={()=>load(true)}/>}
   </div>
 }
 ReactDOM.render(<App/>,document.getElementById("app"));
