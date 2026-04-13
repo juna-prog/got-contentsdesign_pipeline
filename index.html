@@ -1007,7 +1007,7 @@ function UserModal({workers,onPick,onClose,canClose}){
         <select value={sel} onChange={e=>setSel(e.target.value)} style={{width:"100%",fontSize:13,padding:"9px 12px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"inherit"}}>
           <option value="">-- 선택 --</option>
           {sorted.map(w=><option key={w.id} value={w.id}>
-            {w.is_team_lead?"★★ ":w.is_part_lead?"★ ":""}{w.name} ({PART_LABELS[w.part_id]||w.part_id||"-"}{w.is_team_lead?" / 팀장":w.is_part_lead?" / 파트장":""})
+            {w.is_team_lead?"★★ ":w.is_part_lead?"★ ":""}{w.name} ({w.is_team_lead?(TEAM_MAP[w.part_id]||"콘텐츠기획")+"팀 / 팀장":(PART_LABELS[w.part_id]||w.part_id||"-")+(w.is_part_lead?" / 파트장":"")})
           </option>)}
         </select>
       </div>
@@ -1292,7 +1292,7 @@ function App(){
   useEffect(()=>{if(wk.length===0)return;
     const uid=localStorage.getItem("pipeline_user_id");
     if(!uid){setUserModal(true);return}
-    const w=wk.find(x=>x.id===uid);
+    const w=wk.find(x=>String(x.id)===String(uid));
     if(!w){setUserModal(true);return}
     setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead});
   },[wk]);
@@ -1311,7 +1311,7 @@ function App(){
   const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
   const st=useMemo(()=>({t:ct.length,cr:ct.filter(c=>c.alert==="critical").length,w:ct.filter(c=>c.alert==="warning").length}),[ct]);
 
-  const roleLabel=user?(user.is_team_lead?"팀장":user.is_lead?"파트장":"작업자"):"";
+  const roleLabel=user?(user.is_team_lead?(TEAM_MAP[user.part_id]||"콘텐츠기획")+"팀 팀장":user.is_lead?"파트장":"작업자"):"";
 
   return<div className="app">
     {/* Header */}
