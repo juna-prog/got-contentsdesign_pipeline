@@ -47,8 +47,8 @@ UPDATE workers SET name = '신주나' WHERE name = '신준하';
 
 -- If '신주나' doesn't exist at all, insert as team lead
 INSERT INTO workers (name, part_id, is_team_lead, is_part_lead)
-SELECT '신주나', 'field', TRUE, FALSE
+SELECT '신주나', 'team_lead', TRUE, FALSE
 WHERE NOT EXISTS (SELECT 1 FROM workers WHERE name = '신주나');
 
--- Ensure is_team_lead is set
-UPDATE workers SET is_team_lead = TRUE WHERE name = '신주나';
+-- Ensure is_team_lead and part_id are correct
+UPDATE workers SET is_team_lead = TRUE, part_id = 'team_lead' WHERE name = '신주나';

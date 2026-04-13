@@ -112,8 +112,8 @@ const AC={critical:"b-r",warning:"b-o",info:"b-a"},AL={critical:"위험",warning
 const SC={done:"#059669",progress:"#2563eb",waiting:"#d1d5db",blocked:"#dc2626"},SL={done:"완료",progress:"진행 중",waiting:"대기",blocked:"차단"};
 const BAR_C={done:"#10b981",progress:"#3b82f6",waiting:"#94a3b8",blocked:"#ef4444"};
 const MC={milestone:"#dc2626",build:"#d97706",qa:"#2563eb",update:"#059669",season:"#7c3aed"};
-const PART_LABELS={"quest":"퀘스트파트","field":"필드파트","combat":"전투파트","level":"레벨파트","art_char_concept":"캐릭터원화","art_char_model":"캐릭터모델링","art_anim":"애니메이션","art_fx":"이펙트","art_bg_concept":"배경원화","art_bg_model":"배경모델링","art_ta":"TA","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
-const TEAM_MAP={"quest":"콘텐츠기획","field":"콘텐츠기획","combat":"콘텐츠기획","level":"콘텐츠기획","art_char_concept":"아트1팀","art_char_model":"아트1팀","art_anim":"아트1팀","art_fx":"아트1팀","art_bg_concept":"아트2팀","art_bg_model":"아트2팀","art_ta":"아트2팀","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
+const PART_LABELS={"team_lead":"팀장","quest":"퀘스트파트","field":"필드파트","combat":"전투파트","level":"레벨파트","art_char_concept":"캐릭터원화","art_char_model":"캐릭터모델링","art_anim":"애니메이션","art_fx":"이펙트","art_bg_concept":"배경원화","art_bg_model":"배경모델링","art_ta":"TA","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
+const TEAM_MAP={"team_lead":"콘텐츠기획","quest":"콘텐츠기획","field":"콘텐츠기획","combat":"콘텐츠기획","level":"콘텐츠기획","art_char_concept":"아트1팀","art_char_model":"아트1팀","art_anim":"아트1팀","art_fx":"아트1팀","art_bg_concept":"아트2팀","art_bg_model":"아트2팀","art_ta":"아트2팀","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
 
 function B({ch,c="b-x"}){return<span className={"b "+c}>{ch}</span>}
 function D({s}){return<span className="dot" style={{background:SC[s]||"#d1d5db"}}/>}
@@ -1097,7 +1097,8 @@ function parseSheet(file,partId){return new Promise((resolve,reject)=>{const rea
   const dataRows=rows.slice(hi+1).filter(r=>r.some(c=>String(c||'').trim()));
   resolve(buildContentsAndTasks(dataRows,colIdx,partId));
 }catch(err){reject(err)}};reader.onerror=reject;reader.readAsArrayBuffer(file)})}
-function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s=>s.trim()).filter(Boolean)}
+function stripBracketSuffix(s){return s.replace(/\s*\[.*?\]\s*$/,'').trim()}
+function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s=>stripBracketSuffix(s.trim())).filter(Boolean)}
 function buildContentsAndTasks(rows,ci,partId){
   const contents=[],tasks=[];let curContent=null,curParentTask=null;
   const nameCounter={};
