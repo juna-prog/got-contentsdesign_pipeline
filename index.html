@@ -81,7 +81,7 @@ const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok)throw new Error(r.status);const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date"),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null)};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null)};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -106,7 +106,7 @@ function canTransitGate(c,nextGateId,u){if(!canEditContent(c,u))return false;
   const ng=GATES.find(g=>g.id===nextGateId);if(!ng)return false;
   if(ng.approval==="lead2"&&!u.is_team_lead)return false;
   return true;}
-function canEditTaskStatus(t,u){if(!u||!t)return false;if(u.is_team_lead||u.is_lead)return true;return t.assignee_id===u.id;}
+function canEditTaskStatus(t,u){if(!u||!t)return false;if(u.is_team_lead||u.is_lead)return true;if(t.assignee_id===u.id)return true;if(t.task_assignees&&t.task_assignees.some(ta=>ta.worker_id===u.id))return true;return false;}
 const TM={raid:{l:"레이드",c:"#dc2626",i:"⚔️"},season_quest:{l:"시즌퀘스트",c:"#7c3aed",i:"📜"},field:{l:"필드",c:"#059669",i:"🌍"},system:{l:"시스템",c:"#2563eb",i:"⚙️"},creature:{l:"크리처",c:"#ea580c",i:"🐉"},multi:{l:"멀티",c:"#db2777",i:"👥"},growth:{l:"성장",c:"#ca8a04",i:"📈"},cosmetic:{l:"코스메틱",c:"#7c3aed",i:"✨"}};
 const AC={critical:"b-r",warning:"b-o",info:"b-a"},AL={critical:"위험",warning:"주의",info:"참고"};
 const SC={done:"#059669",progress:"#2563eb",waiting:"#d1d5db",blocked:"#dc2626"},SL={done:"완료",progress:"진행 중",waiting:"대기",blocked:"차단"};
@@ -296,13 +296,12 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     return g;
   },[workers,teamFilter,partFilter]);
 
-  // Map tasks to workers
+  // Map tasks to workers (including multi-assignees)
   const workerTasks=useMemo(()=>{
-    const m={};
+    const m={};const added=new Set();
     (tasks||[]).forEach(t=>{
-      if(!t.assignee_id)return;
-      if(!m[t.assignee_id])m[t.assignee_id]=[];
-      m[t.assignee_id].push(t);
+      if(t.assignee_id){if(!m[t.assignee_id])m[t.assignee_id]=[];m[t.assignee_id].push(t);added.add(t.assignee_id+'::'+t.id)}
+      if(t.task_assignees){for(const ta of t.task_assignees){const k=ta.worker_id+'::'+t.id;if(!added.has(k)){if(!m[ta.worker_id])m[ta.worker_id]=[];m[ta.worker_id].push({...t,_is_secondary:ta.worker_id!==t.assignee_id});added.add(k)}}}
     });
     return m;
   },[tasks]);
@@ -470,8 +469,8 @@ function GanttView({tasks,workers,milestones,parts,contents}){
                 if(x2===null)x2=x1+dayWidth*7;
                 const w=Math.max(20,x2-x1);
                 const bc=BAR_C[t.status]||BAR_C.waiting;
-                return<div key={t.id} className="gantt-bar"
-                  style={{left:x1,top:6,width:w,background:bc}}
+                return<div key={t.id+(t._is_secondary?'-s':'')} className="gantt-bar"
+                  style={{left:x1,top:6,width:w,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:t._is_secondary?`1px dashed ${bc}`:undefined,opacity:t._is_secondary?.65:undefined}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})}
                   onMouseLeave={()=>setTip(null)}>
                   {w>60?t.task_name:""}</div>
@@ -513,6 +512,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
         {tooltip.task.start_date&&<div>시작: {tooltip.task.start_date}</div>}
         {tooltip.task.end_date&&<div>종료: {tooltip.task.end_date}</div>}
         {tooltip.task.estimated_days&&<div>소요: {tooltip.task.estimated_days}일</div>}
+        {tooltip.task.task_assignees&&tooltip.task.task_assignees.length>1&&<div>담당: {tooltip.task.task_assignees.map(ta=>ta.workers?.name).filter(Boolean).join(', ')}</div>}
       </div>
     </div>}
   </div>
@@ -538,12 +538,15 @@ function TaskSheet({tasks,workers,contents,versions}){
       const qaDeadline=ver?.target_date?new Date(new Date(ver.target_date).getTime()-30*24*60*60*1000):null;
       const endD=t.end_date?new Date(t.end_date):null;
       const risk=(!endD||!qaDeadline)?"":t.status==="done"?"안정":endD>qaDeadline?"위험":"안정";
-      return{...t,workerName:w.name||t.workers?.name||"미배정",team,part,contentName:c.name||t.contents?.name||"",contentType:c.type||"",partId:w.part_id||"",risk,qaDeadline};
+      const allAssignees=(t.task_assignees||[]).map(ta=>ta.workers).filter(Boolean);
+      const assigneeDisplay=allAssignees.length>1?(allAssignees[0].name+' +'+(allAssignees.length-1)):(w.name||t.workers?.name||"미배정");
+      const assigneeTooltip=allAssignees.length>1?allAssignees.map(a=>a.name).join(', '):null;
+      return{...t,workerName:w.name||t.workers?.name||"미배정",assigneeDisplay,assigneeTooltip,allAssigneeNames:allAssignees.map(a=>a.name),team,part,contentName:c.name||t.contents?.name||"",contentType:c.type||"",partId:w.part_id||"",risk,qaDeadline};
     }).filter(r=>{
       if(teamTab!=="all"&&r.team!==teamTab)return false;
       if(partFilter!=="all"&&r.partId!==partFilter)return false;
       if(statusFilter!=="all"&&r.status!==statusFilter)return false;
-      if(assigneeFilter!=="all"&&r.workerName!==assigneeFilter)return false;
+      if(assigneeFilter!=="all"&&r.workerName!==assigneeFilter&&!(r.allAssigneeNames||[]).includes(assigneeFilter))return false;
       return true;
     });
     const g={};rows.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
@@ -556,7 +559,7 @@ function TaskSheet({tasks,workers,contents,versions}){
   useEffect(()=>{if(partOrder===null&&partKeys.length>0)setPartOrder(partKeys)},[partKeys]);
 
   const teamKeys=[...new Set(Object.values(TEAM_MAP))].sort();
-  const assignees=[...new Set((tasks||[]).map(t=>t.workers?.name).filter(Boolean))].sort();
+  const assignees=[...new Set((tasks||[]).flatMap(t=>{const names=[t.workers?.name];if(t.task_assignees)t.task_assignees.forEach(ta=>{if(ta.workers?.name)names.push(ta.workers.name)});return names}).filter(Boolean))].sort();
   const totalFiltered=Object.values(grouped).reduce((s,arr)=>s+arr.length,0);
   const toggleC=k=>setCol(p=>({...p,[k]:!p[k]}));
 
@@ -618,7 +621,7 @@ function TaskSheet({tasks,workers,contents,versions}){
           return<div key={t.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12}}>
             <span style={{color:"var(--t4)"}}>{i+1}</span>
             <span style={{color:"var(--t3)",fontSize:11}}>{t.part}</span>
-            <span style={{color:"var(--t2)",fontSize:11}}>{t.workerName}</span>
+            <span style={{color:"var(--t2)",fontSize:11}} title={t.assigneeTooltip||t.workerName}>{t.assigneeDisplay||t.workerName}</span>
             <span style={{color:tm.c||"var(--t2)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tm.i||""} {t.contentName}</span>
             <span style={{color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t.task_name}>{t.task_name}</span>
             <span style={{fontSize:11,color:"var(--t4)"}}>{t.start_date||"-"}</span>
@@ -648,10 +651,11 @@ function SlotView({workers,tasks}){
 
   const data=useMemo(()=>{
     const wMap={};
+    const added=new Set();
     (tasks||[]).forEach(t=>{
-      if(!t.assignee_id)return;
-      if(!wMap[t.assignee_id])wMap[t.assignee_id]=[];
-      wMap[t.assignee_id].push(t);
+      const addTo=(wid)=>{const k=wid+'::'+t.id;if(added.has(k))return;if(!wMap[wid])wMap[wid]=[];wMap[wid].push(t);added.add(k)};
+      if(t.assignee_id)addTo(t.assignee_id);
+      if(t.task_assignees){for(const ta of t.task_assignees)addTo(ta.worker_id)}
     });
     const teams={};
     (workers||[]).forEach(w=>{
@@ -1093,18 +1097,26 @@ function parseSheet(file,partId){return new Promise((resolve,reject)=>{const rea
   const dataRows=rows.slice(hi+1).filter(r=>r.some(c=>String(c||'').trim()));
   resolve(buildContentsAndTasks(dataRows,colIdx,partId));
 }catch(err){reject(err)}};reader.onerror=reject;reader.readAsArrayBuffer(file)})}
+function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s=>s.trim()).filter(Boolean)}
 function buildContentsAndTasks(rows,ci,partId){
   const contents=[],tasks=[];let curContent=null,curParentTask=null;
+  const nameCounter={};
   for(const r of rows){
     const get=(k)=>ci[k]>=0?String(r[ci[k]]||'').trim():'';
     const rawTitle=get('세부 내용');const isChild=isChildRow(rawTitle);const contentName=get('콘텐츠명');
     if(contentName&&!isChild){
-      curContent={source_key:`${partId}::${contentName}`,name:contentName,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:get('담당자')||null,start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
+      nameCounter[contentName]=(nameCounter[contentName]||0)+1;
+      const suffix=nameCounter[contentName]>1?`::${nameCounter[contentName]}`:'';
+      const srcKey=`${partId}::${contentName}${suffix}`;
+      const ownerRaw=get('담당자')||null;
+      curContent={source_key:srcKey,name:contentName,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:ownerRaw,_owner_names:parseAssigneeNames(ownerRaw),start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
       contents.push(curContent);curParentTask=null;
     }
     if(!curContent)continue;
     const taskTitle=stripIndent(rawTitle);if(!taskTitle)continue;
-    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,assignee_name:get('담당자')||curContent.owner,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(get('작업 시작 일정'))||curContent.start_date,end_date:normalizeDate(get('작업 완료 일정'))||curContent.end_date,days:parseInt(get('작업 일수'),10)||null,jira_url:get('지라 일감')||null,notes:get('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null};
+    const assigneeRaw=get('담당자')||curContent.owner;
+    const assigneeNames=parseAssigneeNames(assigneeRaw);
+    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(get('작업 시작 일정'))||curContent.start_date,end_date:normalizeDate(get('작업 완료 일정'))||curContent.end_date,days:parseInt(get('작업 일수'),10)||null,jira_url:get('지라 일감')||null,notes:get('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
@@ -1148,7 +1160,7 @@ function ImportModal({user,workers,onClose,onDone}){
       for(const t of p.tasks){const ex=exMapT.get(t.source_key);if(!ex)tAdd.push(t);else tUpd.push({...t,_id:ex.id})}
       const workerNames=new Set((workers||[]).map(w=>w.name));
       const unknown=new Set();
-      for(const t of p.tasks){if(t.assignee_name&&!workerNames.has(t.assignee_name))unknown.add(t.assignee_name)}
+      for(const t of p.tasks){for(const n of(t._assignee_names||[])){if(n&&!workerNames.has(n))unknown.add(n)}}
       const unknownGate=p.contents.filter(c=>!c.gate).map(c=>c.name);
       setDiff({cAdd,cUpd,cLocked,tAdd,tUpd,unknownWorkers:[...unknown],unknownGate});
     }catch(e){setError(e.message)}
@@ -1199,6 +1211,18 @@ function ImportModal({user,workers,onClose,onDone}){
       }
       for(const t of updChildren){const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;const p=buildTaskPayload(t,contentIdByKey,workerByName,pid,now);if(p)await db.updTask(t._id,p)}
 
+      // Sync task_assignees junction table for multi-assignee tasks
+      const allParsedTasks=[...diff.tAdd,...diff.tUpd];
+      const exT3=await db.tasksBySrc(partId+'::');
+      for(const t of(exT3||[]))taskIdByKey.set(t.source_key,t.id);
+      for(const t of allParsedTasks){
+        if(!t._assignee_names||t._assignee_names.length<2)continue;
+        const tid=t._id||taskIdByKey.get(t.source_key);if(!tid)continue;
+        await db.delTaskAssignees(tid);
+        const rows=t._assignee_names.map(n=>{const w=workerByName.get(n);return w?{task_id:tid,worker_id:w.id,role:'assignee'}:null}).filter(Boolean);
+        if(rows.length>0)await db.bulkTaskAssignees(rows);
+      }
+
       await db.addImportRun({part_id:partId,file_name:file.name,imported_by:user.name,contents_added:diff.cAdd.length,contents_updated:diff.cUpd.length,tasks_added:diff.tAdd.length,tasks_updated:diff.tUpd.length});
       setDone({c:diff.cAdd.length+diff.cUpd.length,t:diff.tAdd.length+diff.tUpd.length});
       onDone&&onDone();
@@ -1231,7 +1255,7 @@ function ImportModal({user,workers,onClose,onDone}){
           {parsed&&diff&&<div style={{marginTop:14,padding:12,background:"var(--bg2)",borderRadius:6,fontSize:12,lineHeight:1.7}}>
             <div style={{fontWeight:700,marginBottom:6}}>미리보기 (DB 저장 안 함)</div>
             <div>콘텐츠 {parsed.contents.length}건 (신규 {diff.cAdd.length}, 갱신 {diff.cUpd.length}{diff.cLocked.length>0?`, 잠금 ${diff.cLocked.length}`:''})</div>
-            <div>태스크 {parsed.tasks.length}건 (신규 {diff.tAdd.length}, 갱신 {diff.tUpd.length})</div>
+            <div>태스크 {parsed.tasks.length}건 (신규 {diff.tAdd.length}, 갱신 {diff.tUpd.length}){(()=>{const mc=parsed.tasks.filter(t=>(t._assignee_names||[]).length>1).length;return mc>0?` / 복수 담당자 ${mc}건`:''})()}</div>
             {diff.unknownWorkers.length>0&&<div style={{marginTop:8,color:"var(--rd)"}}>⚠ 미인식 담당자 {diff.unknownWorkers.length}명: {diff.unknownWorkers.slice(0,5).join(", ")}{diff.unknownWorkers.length>5?'...':''}</div>}
             {diff.unknownGate.length>0&&<div style={{marginTop:4,color:"var(--or)"}}>⚠ 미인식 게이트 {diff.unknownGate.length}건: 기본 G0 적용</div>}
           </div>}

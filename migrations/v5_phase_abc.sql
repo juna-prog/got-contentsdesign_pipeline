@@ -98,4 +98,4 @@ ALTER TABLE workers
   ADD COLUMN IF NOT EXISTS is_team_lead BOOLEAN DEFAULT FALSE;
 
 -- 팀장 지정 (이름 기준 - 실제 환경에 맞게 조정)
-UPDATE workers SET is_team_lead = TRUE WHERE name = '신준하';
+UPDATE workers SET is_team_lead = TRUE WHERE name = '신주나';
