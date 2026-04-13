@@ -1013,7 +1013,7 @@ function UserModal({workers,onPick,onClose,canClose}){
       </div>
       <div className="modal-f">
         {canClose&&<button className="bt" onClick={onClose}>취소</button>}
-        <button className="bt bt-g" disabled={!sel} onClick={()=>{const w=sorted.find(x=>x.id===sel);if(w)onPick(w)}}>선택</button>
+        <button className="bt bt-g" disabled={!sel} onClick={()=>{const w=sorted.find(x=>String(x.id)===String(sel));if(w)onPick(w)}}>선택</button>
       </div>
     </div>
   </div>
