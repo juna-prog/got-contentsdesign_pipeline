@@ -6,9 +6,9 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS task_assignees (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  worker_id UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
   role TEXT DEFAULT 'assignee',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(task_id, worker_id)
@@ -40,8 +40,8 @@ ON CONFLICT (task_id, worker_id) DO NOTHING;
 UPDATE workers SET name = '신주나' WHERE name = '신준하';
 
 -- If '신주나' doesn't exist at all, insert as team lead (no specific part - oversees all)
-INSERT INTO workers (id, name, part_id, is_team_lead, is_part_lead)
-SELECT gen_random_uuid(), '신주나', 'field', TRUE, FALSE
+INSERT INTO workers (name, part_id, is_team_lead, is_part_lead)
+SELECT '신주나', 'field', TRUE, FALSE
 WHERE NOT EXISTS (SELECT 1 FROM workers WHERE name = '신주나');
 
 -- Ensure is_team_lead is set
