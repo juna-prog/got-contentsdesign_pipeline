@@ -80,7 +80,7 @@ select option{background:var(--bg)}
 const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
-async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok)throw new Error(r.status);const t=await r.text();return t?JSON.parse(t):null}
+async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
 const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null)};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
@@ -1205,7 +1205,7 @@ function parseArtSheet(file){return new Promise((resolve,reject)=>{const reader=
 // 파트별 기본 type (기존 contents.type enum과의 호환)
 const PART_DEFAULT_TYPE={combat:"system",level:"system",field:"field",quest:"season_quest"};
 function buildContentPayload(c,targetBuild,now){
-  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'NONE',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,target_build:targetBuild,imported_at:now,priority:2,doc_status:'진행',alert:'none',part_id:c.part_id||null};
+  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,target_build:targetBuild,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
 }
 function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
   const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
@@ -1266,7 +1266,7 @@ function ImportModal({user,workers,onClose,onDone}){
       }
       // 2. 갱신 콘텐츠
       for(const c of diff.cUpd){
-        const upd={gate:c.gate||'NONE',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:effectiveTargetBuild,imported_at:now};
+        const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:effectiveTargetBuild,imported_at:now};
         await db.updContent(c._id,upd);
         await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
       }
