@@ -1258,14 +1258,15 @@ function ImportModal({user,workers,onClose,onDone}){
       const now=new Date().toISOString();
       // 1. 신규 콘텐츠
       const insertedC=[];
+      const effectiveTargetBuild=isArt?null:targetBuild;
       if(diff.cAdd.length>0){
-        const payload=diff.cAdd.map(c=>buildContentPayload(c,targetBuild,now));
+        const payload=diff.cAdd.map(c=>buildContentPayload(c,effectiveTargetBuild,now));
         const res=await db.bulkContents(payload);
         insertedC.push(...(res||[]));
       }
       // 2. 갱신 콘텐츠
       for(const c of diff.cUpd){
-        const upd={gate:c.gate||'NONE',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:targetBuild,imported_at:now};
+        const upd={gate:c.gate||'NONE',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:effectiveTargetBuild,imported_at:now};
         await db.updContent(c._id,upd);
         await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
       }
@@ -1323,11 +1324,11 @@ function ImportModal({user,workers,onClose,onDone}){
               {allowedParts.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>
-          <div style={{marginBottom:10}}>
+          {!isArt&&<div style={{marginBottom:10}}>
             <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>목표 빌드</label>
             <input value={targetBuild} onChange={e=>setTargetBuild(e.target.value)}
               style={{display:"block",width:"100%",padding:8,marginTop:4,border:"1px solid var(--bd)",borderRadius:6}}/>
-          </div>
+          </div>}
           <div style={{marginBottom:10}}>
             <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>xlsx 파일</label>
             <input type="file" accept=".xlsx" onChange={e=>handleFile(e.target.files[0])}
