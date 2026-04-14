@@ -325,7 +325,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
       r.push({type:"header",pid,label:PART_LABELS[pid]||pid,count:wkrs.length});
       if(!collapsed[pid]){
         wkrs.forEach(w=>{
-          const ts=(workerTasks[w.id]||[]).filter(t=>t.start_date||t.end_date);
+          const ts=(workerTasks[w.id]||[]);
           r.push({type:"worker",worker:w,tasks:ts,expanded:!!expandedW[w.id]});
           if(expandedW[w.id]){
             ts.forEach(t=>r.push({type:"task",task:t,worker:w}));
@@ -451,7 +451,9 @@ function GanttView({tasks,workers,milestones,parts,contents}){
             if(r.type==="header")return<div key={"hr"+ri} style={{height:rowH,background:"var(--bg3)",borderBottom:"1px solid var(--bd)"}}/>;
             if(r.type==="task"){
               const t=r.task;let x1=dateToX(t.start_date);let x2=dateToX(t.end_date);
-              if(x1===null&&x2!==null)x1=x2-dayWidth*7;
+              const isOngoing=t.start_date==null&&t.end_date==null;
+              if(isOngoing){x1=todayX;x2=todayX+dayWidth*30}
+              else if(x1===null&&x2!==null)x1=x2-dayWidth*7;
               if(x1===null)return<div key={"tr"+ri} className="gantt-row"/>;
               if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;if(x2===null)x2=x1+dayWidth*7;
               const w=Math.max(20,x2-x1);const bc=BAR_C[t.status]||BAR_C.waiting;
@@ -465,7 +467,9 @@ function GanttView({tasks,workers,milestones,parts,contents}){
               {r.tasks.map((t,ti)=>{
                 let x1=dateToX(t.start_date);
                 let x2=dateToX(t.end_date);
-                if(x1===null&&x2!==null)x1=x2-dayWidth*7;
+                const isOngoing=t.start_date==null&&t.end_date==null;
+                if(isOngoing){x1=todayX;x2=todayX+dayWidth*30}
+                else if(x1===null&&x2!==null)x1=x2-dayWidth*7;
                 if(x1===null)return null;
                 if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;
                 if(x2===null)x2=x1+dayWidth*7;
