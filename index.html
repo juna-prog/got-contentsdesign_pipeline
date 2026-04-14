@@ -112,8 +112,8 @@ const AC={critical:"b-r",warning:"b-o",info:"b-a"},AL={critical:"위험",warning
 const SC={done:"#059669",progress:"#2563eb",waiting:"#d1d5db",blocked:"#dc2626"},SL={done:"완료",progress:"진행 중",waiting:"대기",blocked:"차단"};
 const BAR_C={done:"#10b981",progress:"#3b82f6",waiting:"#94a3b8",blocked:"#ef4444"};
 const MC={milestone:"#dc2626",build:"#d97706",qa:"#2563eb",update:"#059669",season:"#7c3aed"};
-const PART_LABELS={"team_lead":"팀장","quest":"퀘스트파트","field":"필드파트","combat":"전투파트","level":"레벨파트","art_pm":"아트PM","art_char_concept":"캐릭터원화","art_char_model":"캐릭터모델링","art_anim":"애니메이션","art_fx":"이펙트","art_bg_concept":"배경원화","art_bg_model":"배경모델링","art_ta":"TA","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
-const TEAM_MAP={"team_lead":"콘텐츠기획","quest":"콘텐츠기획","field":"콘텐츠기획","combat":"콘텐츠기획","level":"콘텐츠기획","art_pm":"아트1팀","art_char_concept":"아트1팀","art_char_model":"아트1팀","art_anim":"아트1팀","art_fx":"아트1팀","art_bg_concept":"아트2팀","art_bg_model":"아트2팀","art_ta":"아트2팀","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
+const PART_LABELS={"team_lead":"팀장","quest":"퀘스트파트","field":"필드파트","combat":"전투파트","level":"레벨파트","art_pm":"아트PM","art_team_1":"아트1팀장","art_team_2":"아트2팀장","art_char_concept":"캐릭터원화","art_char_model":"캐릭터모델링","art_anim":"애니메이션","art_fx":"이펙트","art_bg_concept":"배경원화","art_bg_model":"배경모델링","art_ta":"TA","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
+const TEAM_MAP={"team_lead":"콘텐츠기획","quest":"콘텐츠기획","field":"콘텐츠기획","combat":"콘텐츠기획","level":"콘텐츠기획","art_pm":"아트1팀","art_team_1":"아트1팀","art_team_2":"아트2팀","art_char_concept":"아트1팀","art_char_model":"아트1팀","art_anim":"아트1팀","art_fx":"아트1팀","art_bg_concept":"아트2팀","art_bg_model":"아트2팀","art_ta":"아트2팀","cutscene":"연출","sound":"사운드","qa":"QA","tech":"테크"};
 
 function B({ch,c="b-x"}){return<span className={"b "+c}>{ch}</span>}
 function D({s}){return<span className="dot" style={{background:SC[s]||"#d1d5db"}}/>}
@@ -1124,10 +1124,88 @@ function buildContentsAndTasks(rows,ci,partId){
   return{contents,tasks};
 }
 
+/* ═══ ART SHEET PARSER ═══ */
+const ART_PART_MAP={'아트 1 팀장':'art_team_1','캐원':'art_char_concept','캐모':'art_char_model','애니':'art_anim','이팩트':'art_fx','아트 2 팀장':'art_team_2','배원':'art_bg_concept','배모':'art_bg_model','TA':'art_ta','연출 팀':'cutscene','연출':'cutscene'};
+const ART_PART_LEADS={'art_char_model':'원근식','art_anim':'나경종','art_fx':'윤정환','art_bg_concept':'이대인','art_ta':'김광준'};
+function normalizeDateExtended(raw){
+  if(!raw)return null;const s=String(raw).trim();
+  // standard YYYY-MM-DD or YYYY.MM.DD
+  const std=normalizeDate(raw);if(std)return std;
+  // "4월6일", "4월 6일", "5월1일"
+  const md=s.match(/(\d{1,2})월\s*(\d{1,2})일/);
+  if(md)return `2026-${md[1].padStart(2,'0')}-${md[2].padStart(2,'0')}`;
+  // "5월중순"
+  const mid=s.match(/(\d{1,2})월\s*중순/);
+  if(mid)return `2026-${mid[1].padStart(2,'0')}-15`;
+  // "4월 안", "4월 대응", "4월일정", "4월"
+  const mo=s.match(/(\d{1,2})월/);
+  if(mo){const m=parseInt(mo[1]);const last=new Date(2026,m,0).getDate();return `2026-${String(m).padStart(2,'0')}-${last}`}
+  return null;
+}
+function resolveArtPartId(raw){
+  if(!raw)return null;
+  const s=String(raw).split('\n')[0].replace(/\s*\(\d+\)\s*$/,'').replace(/\s*\(파트장\)\s*$/,'').trim();
+  return ART_PART_MAP[s]||null;
+}
+function parseArtSheet(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=(e)=>{try{
+  const wb=XLSX.read(e.target.result,{type:'array'});
+  const sheetName=wb.SheetNames[0];
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:''});
+  // find header: "성명" + "업무 내용"
+  let hi=-1,colName=-1,colTask=-1,colDate=-1,colPart=-1;
+  for(let i=0;i<Math.min(10,rows.length);i++){
+    const r=rows[i].map(c=>String(c||'').trim());
+    const ni=r.indexOf('성명'),ti=r.indexOf('업무 내용');
+    if(ni>=0&&ti>=0){hi=i;colName=ni;colTask=ti;colDate=r.indexOf('완료 예정일');colPart=r.findIndex(c=>c.includes('팀')&&c.includes('파트')||c==='팀 / 파트');break}
+  }
+  if(hi<0)throw new Error('아트 시트 헤더를 찾을 수 없음 (성명/업무 내용 컬럼 필요)');
+  const contents=[],tasks=[];
+  let curPartId=null,curWorker=null,curIsLead=false;
+  const taskCounter={};
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i];
+    const partRaw=colPart>=0?String(r[colPart]||'').trim():'';
+    const nameRaw=String(r[colName]||'').trim();
+    const taskRaw=String(r[colTask]||'').trim();
+    const dateRaw=colDate>=0?String(r[colDate]||'').trim():'';
+    // update current part
+    if(partRaw){const pid=resolveArtPartId(partRaw);if(pid)curPartId=pid}
+    // update current worker
+    if(nameRaw){
+      const isLead=nameRaw.includes('(파트장)');
+      curWorker=nameRaw.replace(/\s*\(파트장\)\s*/,'').trim();
+      curIsLead=isLead;
+      // handle multi-name cell (연출 팀: "김상연\n박민주\n노보람")
+      if(curWorker.includes('\n'))curWorker=curWorker.split('\n')[0].trim();
+    }
+    if(!taskRaw||!curPartId||!curWorker)continue;
+    // parse task - handle "[작업 담당자 미지정]" prefix
+    let taskTitle=taskRaw;let assignee=curWorker;
+    if(taskTitle.startsWith('[작업 담당자 미지정]')){
+      taskTitle=taskTitle.replace('[작업 담당자 미지정]','').trim();
+      assignee=ART_PART_LEADS[curPartId]||curWorker;
+    }
+    // handle multi-line task content (numbered list in one cell)
+    const taskLines=taskTitle.split('\n').map(l=>l.replace(/^\d+\.\s*/,'').trim()).filter(Boolean);
+    for(const line of taskLines){
+      const tkey=`${curPartId}::${assignee}::${line}`;
+      taskCounter[tkey]=(taskCounter[tkey]||0)+1;
+      const suffix=taskCounter[tkey]>1?`::${taskCounter[tkey]}`:'';
+      const srcKey=`${curPartId}::${assignee}::${line}${suffix}`;
+      const endDate=normalizeDateExtended(dateRaw);
+      const content={source_key:srcKey,name:line,gate:null,category:null,owner:assignee,_owner_names:[assignee],start_date:null,end_date:endDate,doc_url:null,notes:null,part_id:curPartId};
+      contents.push(content);
+      const task={source_key:`${srcKey}::task`,_content_source_key:srcKey,title:line,assignee_name:assignee,_assignee_names:[assignee],related_part:null,status:'progress',start_date:null,end_date:endDate,days:null,jira_url:null,notes:null,_is_child:false,_parent_source_key:null};
+      tasks.push(task);
+    }
+  }
+  resolve({contents,tasks});
+}catch(err){reject(err)}};reader.onerror=reject;reader.readAsArrayBuffer(file)})}
+
 // 파트별 기본 type (기존 contents.type enum과의 호환)
 const PART_DEFAULT_TYPE={combat:"system",level:"system",field:"field",quest:"season_quest"};
 function buildContentPayload(c,targetBuild,now){
-  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,target_build:targetBuild,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
+  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'NONE',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,target_build:targetBuild,imported_at:now,priority:2,doc_status:'진행',alert:'none',part_id:c.part_id||null};
 }
 function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
   const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
@@ -1136,7 +1214,7 @@ function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
 }
 
 function ImportModal({user,workers,onClose,onDone}){
-  const PARTS=[{id:'combat',label:'전투'},{id:'level',label:'레벨'},{id:'field',label:'필드'},{id:'quest',label:'퀘스트'}];
+  const PARTS=[{id:'combat',label:'전투'},{id:'level',label:'레벨'},{id:'field',label:'필드'},{id:'quest',label:'퀘스트'},{id:'art_all',label:'아트팀 전체'}];
   const allowedParts=user.is_team_lead?PARTS:PARTS.filter(p=>p.id===user.part_id);
   const[partId,setPartId]=useState(allowedParts[0]?.id||'combat');
   const[file,setFile]=useState(null);
@@ -1147,12 +1225,16 @@ function ImportModal({user,workers,onClose,onDone}){
   const[error,setError]=useState(null);
   const[done,setDone]=useState(null);
 
+  const isArt=partId==='art_all';
   const handleFile=async(f)=>{
     setFile(f);setParsed(null);setDiff(null);setError(null);if(!f)return;
     try{
-      const p=await parseSheet(f,partId);setParsed(p);
-      const prefix=partId+'::';
-      const[existingC,existingT]=await Promise.all([db.contentsBySrc(prefix),db.tasksBySrc(prefix)]);
+      const p=isArt?await parseArtSheet(f):await parseSheet(f,partId);setParsed(p);
+      const artPrefixes=Object.values(ART_PART_MAP);
+      const prefixes=isArt?[...new Set(artPrefixes)]:[partId];
+      const allExC=[],allExT=[];
+      for(const pfx of prefixes){const[ec,et]=await Promise.all([db.contentsBySrc(pfx+'::'),db.tasksBySrc(pfx+'::')]);allExC.push(...(ec||[]));allExT.push(...(et||[]))}
+      const existingC=allExC,existingT=allExT;
       const exMapC=new Map((existingC||[]).map(c=>[c.source_key,c]));
       const exMapT=new Map((existingT||[]).map(t=>[t.source_key,t]));
       const cAdd=[],cUpd=[],cLocked=[];
@@ -1183,7 +1265,7 @@ function ImportModal({user,workers,onClose,onDone}){
       }
       // 2. 갱신 콘텐츠
       for(const c of diff.cUpd){
-        const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:targetBuild,imported_at:now};
+        const upd={gate:c.gate||'NONE',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:targetBuild,imported_at:now};
         await db.updContent(c._id,upd);
         await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
       }
@@ -1193,8 +1275,7 @@ function ImportModal({user,workers,onClose,onDone}){
       for(const c of diff.cUpd)contentIdByKey.set(c.source_key,c._id);
       // 3. 태스크 - 부모 먼저, 자식 나중
       const taskIdByKey=new Map();
-      const exT2=await db.tasksBySrc(partId+'::');
-      for(const t of(exT2||[]))taskIdByKey.set(t.source_key,t.id);
+      for(const pfx of(isArt?[...new Set(Object.values(ART_PART_MAP))]:[partId])){const exT2=await db.tasksBySrc(pfx+'::');for(const t of(exT2||[]))taskIdByKey.set(t.source_key,t.id)}
 
       const newParents=diff.tAdd.filter(t=>!t._is_child);
       const newChildren=diff.tAdd.filter(t=>t._is_child);
@@ -1214,8 +1295,7 @@ function ImportModal({user,workers,onClose,onDone}){
 
       // Sync task_assignees junction table for multi-assignee tasks
       const allParsedTasks=[...diff.tAdd,...diff.tUpd];
-      const exT3=await db.tasksBySrc(partId+'::');
-      for(const t of(exT3||[]))taskIdByKey.set(t.source_key,t.id);
+      for(const pfx of(isArt?[...new Set(Object.values(ART_PART_MAP))]:[partId])){const exT3=await db.tasksBySrc(pfx+'::');for(const t of(exT3||[]))taskIdByKey.set(t.source_key,t.id)}
       for(const t of allParsedTasks){
         if(!t._assignee_names||t._assignee_names.length<2)continue;
         const tid=t._id||taskIdByKey.get(t.source_key);if(!tid)continue;
@@ -1224,7 +1304,7 @@ function ImportModal({user,workers,onClose,onDone}){
         if(rows.length>0)await db.bulkTaskAssignees(rows);
       }
 
-      await db.addImportRun({part_id:partId,file_name:file.name,imported_by:user.name,contents_added:diff.cAdd.length,contents_updated:diff.cUpd.length,tasks_added:diff.tAdd.length,tasks_updated:diff.tUpd.length});
+      await db.addImportRun({part_id:isArt?'art_all':partId,file_name:file.name,imported_by:user.name,contents_added:diff.cAdd.length,contents_updated:diff.cUpd.length,tasks_added:diff.tAdd.length,tasks_updated:diff.tUpd.length});
       setDone({c:diff.cAdd.length+diff.cUpd.length,t:diff.tAdd.length+diff.tUpd.length});
       onDone&&onDone();
     }catch(e){setError("import 실패: "+e.message)}
@@ -1257,8 +1337,9 @@ function ImportModal({user,workers,onClose,onDone}){
             <div style={{fontWeight:700,marginBottom:6}}>미리보기 (DB 저장 안 함)</div>
             <div>콘텐츠 {parsed.contents.length}건 (신규 {diff.cAdd.length}, 갱신 {diff.cUpd.length}{diff.cLocked.length>0?`, 잠금 ${diff.cLocked.length}`:''})</div>
             <div>태스크 {parsed.tasks.length}건 (신규 {diff.tAdd.length}, 갱신 {diff.tUpd.length}){(()=>{const mc=parsed.tasks.filter(t=>(t._assignee_names||[]).length>1).length;return mc>0?` / 복수 담당자 ${mc}건`:''})()}</div>
+            {isArt&&parsed.contents.length>0&&<div style={{marginTop:6,fontSize:11,color:"var(--t3)"}}>{(()=>{const pc={};parsed.contents.forEach(c=>{const l=PART_LABELS[c.part_id]||c.part_id;pc[l]=(pc[l]||0)+1});return Object.entries(pc).map(([k,v])=>`${k} ${v}건`).join(', ')})()}</div>}
             {diff.unknownWorkers.length>0&&<div style={{marginTop:8,color:"var(--rd)"}}>⚠ 미인식 담당자 {diff.unknownWorkers.length}명: {diff.unknownWorkers.slice(0,5).join(", ")}{diff.unknownWorkers.length>5?'...':''}</div>}
-            {diff.unknownGate.length>0&&<div style={{marginTop:4,color:"var(--or)"}}>⚠ 미인식 게이트 {diff.unknownGate.length}건: 기본 G0 적용</div>}
+            {!isArt&&diff.unknownGate.length>0&&<div style={{marginTop:4,color:"var(--or)"}}>⚠ 미인식 게이트 {diff.unknownGate.length}건: 기본 G0 적용</div>}
           </div>}
           {error&&<div style={{marginTop:10,padding:10,background:"var(--rd-bg)",color:"var(--rd)",borderRadius:6,fontSize:12}}>{error}</div>}
         </>}
