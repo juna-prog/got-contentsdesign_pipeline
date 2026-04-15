@@ -392,7 +392,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
             <span style={{marginRight:6}}>{collapsed[r.pid]?"▶":"▼"}</span>{r.label} ({r.count})
           </div>:r.type==="task"?
           <div key={"t"+r.task.id} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}}>
-            <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.task.task_name}</span>
+            <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.task.title||r.task.task_name}</span>
           </div>:
           <div key={"w"+r.worker.id} className="gantt-name" style={{cursor:"pointer",display:"flex",alignItems:"center",gap:2}} onClick={e=>{
             if(e.target.closest('.exp-btn')){toggleExpW(r.worker.id);return}
@@ -488,7 +488,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
                   style={{left:x1,top:6,width:w,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:t._is_secondary?`1px dashed ${bc}`:undefined,opacity:t._is_secondary?.65:undefined}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})}
                   onMouseLeave={()=>setTip(null)}>
-                  {w>60?t.task_name:""}</div>
+                  {w>60?(t.title||t.task_name||""):""}</div>
               })}
             </div>
           })}
@@ -510,7 +510,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
           workerPopup.tasks.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderBottom:"1px solid var(--bg3)"}}>
             <D s={t.status}/>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,color:"var(--t1)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.task_name}</div>
+              <div style={{fontSize:12,color:"var(--t1)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title||t.task_name}</div>
               <div style={{fontSize:10,color:"var(--t4)"}}>{t.contents?.name||""} - {t.start_date||"?"} ~ {t.end_date||"?"} - {t.estimated_days||"?"}일</div>
             </div>
             <span style={{fontSize:10,color:SC[t.status]||"var(--t4)",fontWeight:600,flexShrink:0}}>{SL[t.status]||t.status}</span>
@@ -520,7 +520,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
 
     {/* Tooltip */}
     {tooltip&&<div className="tooltip" style={{left:tooltip.x+12,top:tooltip.y-10}}>
-      <div style={{fontWeight:700,marginBottom:2}}>{tooltip.task.task_name}</div>
+      <div style={{fontWeight:700,marginBottom:2}}>{tooltip.task.title||tooltip.task.task_name}</div>
       <div style={{fontSize:11,opacity:.8}}>
         {tooltip.task.contents?.name&&<div>콘텐츠: {tooltip.task.contents.name}</div>}
         <div>상태: {SL[tooltip.task.status]||tooltip.task.status}</div>
@@ -790,7 +790,7 @@ function SlotView({workers,tasks}){
             {depTask&&<div style={{marginTop:6,padding:"6px 8px",background:"var(--bg3)",borderRadius:4,fontSize:11}}>
               <div style={{color:"var(--t3)",fontWeight:600,marginBottom:2}}>선행 작업:</div>
               <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <D s={depTask.status}/><span style={{color:"var(--t2)"}}>{depTask.task_name}</span>
+                <D s={depTask.status}/><span style={{color:"var(--t2)"}}>{depTask.title||depTask.task_name}</span>
                 <B ch={SL[depTask.status]||depTask.status} c={depTask.status==="done"?"b-g":"b-o"}/>
               </div>
             </div>}
@@ -801,7 +801,7 @@ function SlotView({workers,tasks}){
         return done.length>0&&<div style={{marginTop:12}}>
           <div style={{fontSize:13,fontWeight:700,marginBottom:6,color:"var(--t3)"}}>완료 ({done.length})</div>
           {done.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:"1px solid var(--bg3)",fontSize:12}}>
-            <D s="done"/><span style={{color:"var(--t3)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.task_name}</span>
+            <D s="done"/><span style={{color:"var(--t3)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title||t.task_name}</span>
             <span style={{fontSize:10,color:"var(--t4)",flexShrink:0}}>{t.end_date||"상시"}</span>
           </div>)}
         </div>})()}
@@ -985,7 +985,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
               return<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderBottom:"1px solid var(--bg3)"}}>
                 <D s={t.status}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.task_name}</div>
+                  <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title||t.task_name}</div>
                   <div style={{fontSize:10,color:"var(--t4)"}}>{t.part_id} · {t.estimated_days||"?"}일</div>
                 </div>
                 <select disabled={!ok} value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)}
