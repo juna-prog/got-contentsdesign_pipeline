@@ -211,6 +211,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
   const[partFilter,setPF]=useState("all");
   const[collapsed,setCol]=useState({});
   const[expandedW,setExpW]=useState({}); // worker id -> show individual task rows
+  const[expandedT,setExpT]=useState({}); // task id -> show sub-tasks
   const[tooltip,setTip]=useState(null);
   const[ganttScale,setGS]=useState(30);
   const[holFilter,setHolF]=useState({KR:true,US:false,JP:true,TW:false,HK:false,IN:false,TH:false});
@@ -325,16 +326,22 @@ function GanttView({tasks,workers,milestones,parts,contents}){
       r.push({type:"header",pid,label:PART_LABELS[pid]||pid,count:wkrs.length});
       if(!collapsed[pid]){
         wkrs.forEach(w=>{
-          const ts=(workerTasks[w.id]||[]);
-          r.push({type:"worker",worker:w,tasks:ts,expanded:!!expandedW[w.id]});
+          const all=(workerTasks[w.id]||[]);
+          const top=all.filter(t=>!t.parent_task_id);
+          const childrenByParent={};all.forEach(t=>{if(t.parent_task_id){if(!childrenByParent[t.parent_task_id])childrenByParent[t.parent_task_id]=[];childrenByParent[t.parent_task_id].push(t)}});
+          r.push({type:"worker",worker:w,tasks:top,expanded:!!expandedW[w.id]});
           if(expandedW[w.id]){
-            ts.forEach(t=>r.push({type:"task",task:t,worker:w}));
+            top.forEach(t=>{
+              const kids=childrenByParent[t.id]||[];
+              r.push({type:"task",task:{...t,_child_count:kids.length},worker:w});
+              if(expandedT[t.id])kids.forEach(c=>r.push({type:"task",task:c,worker:w,_is_child:true}));
+            });
           }
         });
       }
     });
     return r;
-  },[groupedWorkers,collapsed,workerTasks,expandedW]);
+  },[groupedWorkers,collapsed,workerTasks,expandedW,expandedT]);
 
   const toggleCollapse=(pid)=>setCol(p=>({...p,[pid]:!p[pid]}));
 
@@ -457,10 +464,12 @@ function GanttView({tasks,workers,milestones,parts,contents}){
               if(x1===null)return<div key={"tr"+ri} className="gantt-row"/>;
               if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;if(x2===null)x2=x1+dayWidth*7;
               const w=Math.max(20,x2-x1);const bc=BAR_C[t.status]||BAR_C.waiting;
-              return<div key={"tr"+ri} className="gantt-row" style={{position:"relative",background:"var(--bg2)"}}>
-                <div className="gantt-bar" style={{left:x1,top:6,width:w,background:bc,opacity:.85}}
+              const isC=!!r._is_child;const kidCount=t._child_count||0;
+              return<div key={"tr"+ri} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
+                {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"absolute",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
+                <div className="gantt-bar" style={{left:x1+(isC?16:0),top:6,width:w,background:bc,opacity:isC?.55:.85,border:isC?`1px dashed ${bc}`:undefined,height:isC?12:undefined}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})} onMouseLeave={()=>setTip(null)}>
-                  {w>60?t.task_name:""}</div>
+                  {w>60?(isC?"└ ":"")+(t.title||t.task_name||""):""}</div>
               </div>
             }
             return<div key={"wr"+ri} className="gantt-row" style={{position:"relative"}}>
@@ -532,6 +541,7 @@ function TaskSheet({tasks,workers,contents,versions}){
   const[assigneeFilter,setAF]=useState("all");
   const[collapsed,setCol]=useState(null); // null = not initialized yet
   const[partOrder,setPartOrder]=useState(null); // custom part ordering
+  const[taskExpanded,setTE]=useState({}); // task-level expand (sub-tasks)
 
   // Group tasks by team->part->worker
   const grouped=useMemo(()=>{
@@ -548,14 +558,23 @@ function TaskSheet({tasks,workers,contents,versions}){
       const assigneeDisplay=allAssignees.length>1?(allAssignees[0].name+' +'+(allAssignees.length-1)):(w.name||t.workers?.name||"미배정");
       const assigneeTooltip=allAssignees.length>1?allAssignees.map(a=>a.name).join(', '):null;
       return{...t,workerName:w.name||t.workers?.name||"미배정",assigneeDisplay,assigneeTooltip,allAssigneeNames:allAssignees.map(a=>a.name),team,part,contentName:c.name||t.contents?.name||"",contentType:c.type||"",partId:w.part_id||"",risk,qaDeadline};
-    }).filter(r=>{
+    });
+    // Build parent/children map
+    const byId=new Map();rows.forEach(r=>byId.set(r.id,r));
+    const childrenMap=new Map();
+    rows.forEach(r=>{if(r.parent_task_id){if(!childrenMap.has(r.parent_task_id))childrenMap.set(r.parent_task_id,[]);childrenMap.get(r.parent_task_id).push(r)}});
+    rows.forEach(r=>r._children=childrenMap.get(r.id)||[]);
+    // Filter helper
+    const matchRow=(r)=>{
       if(teamTab!=="all"&&r.team!==teamTab)return false;
       if(partFilter!=="all"&&r.partId!==partFilter)return false;
       if(statusFilter!=="all"&&r.status!==statusFilter)return false;
       if(assigneeFilter!=="all"&&r.workerName!==assigneeFilter&&!(r.allAssigneeNames||[]).includes(assigneeFilter))return false;
       return true;
-    });
-    const g={};rows.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
+    };
+    // Include top-level rows if itself matches OR any child matches (force parent visible)
+    const filtered=rows.filter(r=>!r.parent_task_id).filter(r=>matchRow(r)||(r._children||[]).some(matchRow));
+    const g={};filtered.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
     return g;
   },[tasks,workers,contents,teamTab,partFilter,statusFilter,assigneeFilter]);
 
@@ -624,17 +643,27 @@ function TaskSheet({tasks,workers,contents,versions}){
         </div>
         {!(collapsed||{})[part]&&rows.map((t,i)=>{
           const tm=TM[t.contentType]||{};
-          return<div key={t.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12}}>
-            <span style={{color:"var(--t4)"}}>{i+1}</span>
-            <span style={{color:"var(--t3)",fontSize:11}}>{t.part}</span>
-            <span style={{color:"var(--t2)",fontSize:11}} title={t.assigneeTooltip||t.workerName}>{t.assigneeDisplay||t.workerName}</span>
-            <span style={{color:tm.c||"var(--t2)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tm.i||""} {t.contentName}</span>
-            <span style={{color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t.task_name}>{t.task_name}</span>
-            <span style={{fontSize:11,color:"var(--t4)"}}>{t.start_date||"-"}</span>
-            <span style={{fontSize:11,color:"var(--t4)"}}>{t.end_date||"상시"}</span>
-            <span style={{fontSize:11,color:"var(--t4)",textAlign:"right"}}>{t.estimated_days?t.estimated_days+"일":"-"}</span>
-            <span style={{fontSize:10}}>{t.risk?<B ch={t.risk} c={t.risk==="위험"?"b-r":"b-g"}/>:"-"}</span>
-          </div>})}
+          const hasChildren=(t._children||[]).length>0;
+          const isExp=!!taskExpanded[t.id];
+          const renderRow=(tt,isChild)=>{
+            const ctm=TM[tt.contentType]||{};
+            return<div key={tt.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12,background:isChild?"var(--bg2)":undefined,paddingLeft:isChild?24:12}}>
+              <span style={{color:"var(--t4)",display:"flex",alignItems:"center",gap:2}}>{!isChild&&hasChildren?<button onClick={(e)=>{e.stopPropagation();setTE(p=>({...p,[t.id]:!p[t.id]}))}} style={{background:"none",border:"none",fontSize:10,cursor:"pointer",color:"var(--t3)",padding:0}}>{isExp?"▼":"▶"}</button>:isChild?<span style={{color:"var(--t4)"}}>└</span>:null}{isChild?"":i+1}{!isChild&&hasChildren?<span style={{fontSize:9,color:"var(--ac)",marginLeft:2}}>+{(t._children||[]).length}</span>:null}</span>
+              <span style={{color:"var(--t3)",fontSize:11}}>{tt.part}</span>
+              <span style={{color:"var(--t2)",fontSize:11}} title={tt.assigneeTooltip||tt.workerName}>{tt.assigneeDisplay||tt.workerName}</span>
+              <span style={{color:ctm.c||"var(--t2)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ctm.i||""} {tt.contentName}</span>
+              <span style={{color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={tt.title||tt.task_name}>{tt.title||tt.task_name}</span>
+              <span style={{fontSize:11,color:"var(--t4)"}}>{tt.start_date||"-"}</span>
+              <span style={{fontSize:11,color:"var(--t4)"}}>{tt.end_date||"상시"}</span>
+              <span style={{fontSize:11,color:"var(--t4)",textAlign:"right"}}>{tt.days?tt.days+"일":"-"}</span>
+              <span style={{fontSize:10}}>{tt.risk?<B ch={tt.risk} c={tt.risk==="위험"?"b-r":"b-g"}/>:"-"}</span>
+            </div>
+          };
+          return<React.Fragment key={t.id}>
+            {renderRow(t,false)}
+            {isExp&&(t._children||[]).map(c=>renderRow(c,true))}
+          </React.Fragment>
+        })}
       </div>})}
     </div>
   </div>
@@ -668,7 +697,8 @@ function SlotView({workers,tasks}){
       const team=TEAM_MAP[w.part_id]||"기타";const part=PART_LABELS[w.part_id]||w.part_id;
       if(!teams[team])teams[team]={};if(!teams[team][part])teams[team][part]=[];
       const wTasks=wMap[w.id]||[];
-      const activeTasks=wTasks.filter(t=>t.status==="progress"||t.status==="waiting");
+      // 부모 태스크만 카운트 (서브태스크는 상세 패널에서만)
+      const activeTasks=wTasks.filter(t=>!t.parent_task_id&&(t.status==="progress"||t.status==="waiting"));
       const endDates=activeTasks.filter(t=>t.end_date).map(t=>new Date(t.end_date));
       const latestEnd=endDates.length?new Date(Math.max(...endDates)):null;
       const freeIn=latestEnd?Math.max(0,Math.ceil((latestEnd-now)/(24*60*60*1000))):0;
@@ -741,8 +771,9 @@ function SlotView({workers,tasks}){
       {selWorker.activeTasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>현재 진행 중인 작업 없음</div>:
         selWorker.activeTasks.map(t=>{
           const depTask=t.dependency_id?depMap[t.dependency_id]:null;
+          const children=(selWorker.allTasks||[]).filter(c=>c.parent_task_id===t.id);
           return<div key={t.id} style={{padding:"10px 12px",border:"1px solid var(--bd)",borderRadius:"var(--r)",background:"var(--bg)",marginBottom:6}}>
-            <div style={{fontSize:13,fontWeight:600,color:"var(--t1)",marginBottom:4}}>{t.task_name}</div>
+            <div style={{fontSize:13,fontWeight:600,color:"var(--t1)",marginBottom:4}}>{t.title||t.task_name}{children.length>0&&<span style={{fontSize:10,color:"var(--ac)",marginLeft:6}}>+{children.length}</span>}</div>
             <div style={{fontSize:11,color:"var(--t3)",marginBottom:2}}>{t.contents?.name||""}</div>
             <div style={{display:"flex",gap:12,fontSize:11,color:"var(--t4)",marginBottom:4}}>
               <span>시작: {t.start_date||"-"}</span>
@@ -750,6 +781,12 @@ function SlotView({workers,tasks}){
               <span>{t.estimated_days?t.estimated_days+"일":""}</span>
             </div>
             <B ch={SL[t.status]||t.status} c={t.status==="progress"?"b-a":"b-x"}/>
+            {children.length>0&&<div style={{marginTop:6,paddingLeft:10,borderLeft:"2px solid var(--bd)"}}>
+              {children.map(c=><div key={c.id} style={{fontSize:11,color:"var(--t3)",padding:"2px 0",display:"flex",alignItems:"center",gap:6}}>
+                <D s={c.status}/><span style={{flex:1}}>{c.title||c.task_name}</span>
+                <span style={{fontSize:10,color:"var(--t4)"}}>{c.end_date||"상시"}</span>
+              </div>)}
+            </div>}
             {depTask&&<div style={{marginTop:6,padding:"6px 8px",background:"var(--bg3)",borderRadius:4,fontSize:11}}>
               <div style={{color:"var(--t3)",fontWeight:600,marginBottom:2}}>선행 작업:</div>
               <div style={{display:"flex",alignItems:"center",gap:4}}>
@@ -1090,9 +1127,11 @@ function normalizeDate(raw){if(!raw)return null;const s=String(raw).trim();const
 const RELATED_PART_MAP={'전투':'combat','전투 파트':'combat','전투파트':'combat','레벨':'level','레벨 파트':'level','필드':'field','필드 파트':'field','퀘스트':'quest','퀘스트(내러티브)':'quest','퀘스트(내러티브) 파트':'quest','아트':'art','UX':'ux','클래스':'class','클래스 파트':'class'};
 function normalizeRelatedPart(raw){if(!raw)return null;return RELATED_PART_MAP[String(raw).trim()]||null}
 const INDENT_PREFIXES=['└','↳','ㄴ'];
-function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'');for(const p of INDENT_PREFIXES)if(s.startsWith(p)){s=s.slice(p.length).trim();break}return s}
-function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;for(const p of INDENT_PREFIXES)if(s.trimStart().startsWith(p))return true;return false}
-const HEADER_KEYS=['콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','작업 일수','기획서','지라 일감','비고'];
+function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'');for(const p of INDENT_PREFIXES)if(s.startsWith(p)){s=s.slice(p.length).trim();break}s=s.replace(/^-\s+/,'');return s}
+function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;const tr=s.trimStart();for(const p of INDENT_PREFIXES)if(tr.startsWith(p))return true;if(/^-\s+/.test(tr))return true;return false}
+function normalizeJiraKey(raw){if(!raw)return null;const m=String(raw).trim().match(/([A-Z]+-\d+)/);return m?m[1]:null}
+const HEADER_KEYS=['콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','작업 일수','기획서','지라 일감','부모 지라','비고'];
+const INHERIT_KEYS=['콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
 function findHeaderRow(rows){for(let i=0;i<Math.min(5,rows.length);i++){const r=rows[i].map(c=>String(c||'').trim());if(r.includes('콘텐츠명')&&r.includes('게이트'))return i}return -1}
 function parseSheet(file,partId){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=(e)=>{try{
   const wb=XLSX.read(e.target.result,{type:'array'});
@@ -1108,9 +1147,12 @@ function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s
 function buildContentsAndTasks(rows,ci,partId){
   const contents=[],tasks=[];let curContent=null,curParentTask=null;
   const nameCounter={};
+  const lastVals={};
   for(const r of rows){
-    const get=(k)=>ci[k]>=0?String(r[ci[k]]||'').trim():'';
-    const rawTitle=get('세부 내용');const isChild=isChildRow(rawTitle);const contentName=get('콘텐츠명');
+    const rawGet=(k)=>ci[k]>=0?String(r[ci[k]]||'').trim():'';
+    // inheritance: inherit lastVals when field is empty
+    const get=(k)=>{const v=rawGet(k);if(v){if(INHERIT_KEYS.includes(k))lastVals[k]=v;return v}return INHERIT_KEYS.includes(k)?(lastVals[k]||''):''};
+    const rawTitle=rawGet('세부 내용');const isChild=isChildRow(rawTitle);const contentName=get('콘텐츠명');
     if(contentName&&!isChild){
       nameCounter[contentName]=(nameCounter[contentName]||0)+1;
       const suffix=nameCounter[contentName]>1?`::${nameCounter[contentName]}`:'';
@@ -1123,7 +1165,8 @@ function buildContentsAndTasks(rows,ci,partId){
     const taskTitle=stripIndent(rawTitle);if(!taskTitle)continue;
     const assigneeRaw=get('담당자')||curContent.owner;
     const assigneeNames=parseAssigneeNames(assigneeRaw);
-    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(get('작업 시작 일정'))||curContent.start_date,end_date:normalizeDate(get('작업 완료 일정'))||curContent.end_date,days:parseInt(get('작업 일수'),10)||null,jira_url:get('지라 일감')||null,notes:get('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null};
+    const jiraRaw=rawGet('지라 일감');const parentJiraRaw=rawGet('부모 지라');
+    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(get('작업 시작 일정'))||curContent.start_date,end_date:normalizeDate(get('작업 완료 일정'))||curContent.end_date,days:parseInt(rawGet('작업 일수'),10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
@@ -1303,6 +1346,15 @@ function ImportModal({user,workers,onClose,onDone}){
       // Sync task_assignees junction table for multi-assignee tasks
       const allParsedTasks=[...diff.tAdd,...diff.tUpd];
       for(const pfx of(isArt?[...new Set(Object.values(ART_PART_MAP))]:[partId])){const exT3=await db.tasksBySrc(pfx+'::');for(const t of(exT3||[]))taskIdByKey.set(t.source_key,t.id)}
+      // Pass 2: resolve parent_task_id via _parent_jira_key (cross-row, order-independent)
+      const jiraToTaskId=new Map();
+      for(const t of allParsedTasks){if(t._jira_key){const tid=t._id||taskIdByKey.get(t.source_key);if(tid)jiraToTaskId.set(t._jira_key,tid)}}
+      for(const t of allParsedTasks){
+        if(!t._parent_jira_key)continue;
+        const tid=t._id||taskIdByKey.get(t.source_key);if(!tid)continue;
+        const pid=jiraToTaskId.get(t._parent_jira_key);if(!pid||pid===tid)continue;
+        await db.updTask(tid,{parent_task_id:pid}).catch(()=>null);
+      }
       for(const t of allParsedTasks){
         if(!t._assignee_names||t._assignee_names.length<2)continue;
         const tid=t._id||taskIdByKey.get(t.source_key);if(!tid)continue;
@@ -1343,7 +1395,7 @@ function ImportModal({user,workers,onClose,onDone}){
           {parsed&&diff&&<div style={{marginTop:14,padding:12,background:"var(--bg2)",borderRadius:6,fontSize:12,lineHeight:1.7}}>
             <div style={{fontWeight:700,marginBottom:6}}>미리보기 (DB 저장 안 함)</div>
             <div>콘텐츠 {parsed.contents.length}건 (신규 {diff.cAdd.length}, 갱신 {diff.cUpd.length}{diff.cLocked.length>0?`, 잠금 ${diff.cLocked.length}`:''})</div>
-            <div>태스크 {parsed.tasks.length}건 (신규 {diff.tAdd.length}, 갱신 {diff.tUpd.length}){(()=>{const mc=parsed.tasks.filter(t=>(t._assignee_names||[]).length>1).length;return mc>0?` / 복수 담당자 ${mc}건`:''})()}</div>
+            <div>태스크 {parsed.tasks.length}건 (신규 {diff.tAdd.length}, 갱신 {diff.tUpd.length}){(()=>{const mc=parsed.tasks.filter(t=>(t._assignee_names||[]).length>1).length;return mc>0?` / 복수 담당자 ${mc}건`:''})()}{(()=>{const sc=parsed.tasks.filter(t=>t._is_child||t._parent_jira_key).length;return sc>0?` / 서브태스크 ${sc}건`:''})()}</div>
             {isArt&&parsed.contents.length>0&&<div style={{marginTop:6,fontSize:11,color:"var(--t3)"}}>{(()=>{const pc={};parsed.contents.forEach(c=>{const l=PART_LABELS[c.part_id]||c.part_id;pc[l]=(pc[l]||0)+1});return Object.entries(pc).map(([k,v])=>`${k} ${v}건`).join(', ')})()}</div>}
             {diff.unknownWorkers.length>0&&<div style={{marginTop:8,color:"var(--rd)"}}>⚠ 미인식 담당자 {diff.unknownWorkers.length}명: {diff.unknownWorkers.slice(0,5).join(", ")}{diff.unknownWorkers.length>5?'...':''}</div>}
             {!isArt&&diff.unknownGate.length>0&&<div style={{marginTop:4,color:"var(--or)"}}>⚠ 미인식 게이트 {diff.unknownGate.length}건: 기본 G0 적용</div>}
