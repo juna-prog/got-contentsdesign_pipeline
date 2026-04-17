@@ -1845,6 +1845,54 @@ function App(){
 
   const handleJump=(contentId)=>{setV("pipeline");setJumpId(contentId);setTimeout(()=>setJumpId(null),1500)};
 
+  const exportCSV=()=>{
+    const GATE_L={"G0":"설정/방향","G1":"IP검수","G2":"컨셉기획","G3":"구현기획","G4":"아트요청","G5":"구현/제작","G6":"재미검증","G7":"QA/폴리싱","DONE":"완료"};
+    const VER_L={};(vr||[]).forEach(v=>{VER_L[v.id]=v.label+" ("+v.target_date+")"});
+    const wMap={};(wk||[]).forEach(w=>{wMap[w.id]=w.name});
+    const cMap={};(ct||[]).forEach(c=>{cMap[c.id]=c});
+
+    const header=["콘텐츠ID","콘텐츠명","유형","게이트","버전","담당(콘텐츠)","시작일(콘텐츠)","종료일(콘텐츠)",
+      "태스크ID","태스크명","담당자","상태","시작일","종료일","소요일","JIRA","비고"];
+    const rows=[header];
+
+    // Group tasks by content
+    const tasksByC={};(allT||[]).forEach(t=>{
+      const cid=t.content_id||(t.contents?undefined:undefined);
+      if(cid)tasksByC[cid]=(tasksByC[cid]||[]).concat(t);
+    });
+
+    (ct||[]).forEach(c=>{
+      const tm=TM[c.type]||{l:c.type||""};
+      const cTasks=tasksByC[c.id]||[];
+      if(cTasks.length===0){
+        rows.push([c.id,c.name,tm.l,GATE_L[c.gate]||c.gate,VER_L[c.version_id]||c.version_id||"",
+          c.owner||"",c.start_date||"",c.end_date||"","","","","","","","","",""]);
+      }else{
+        cTasks.forEach((t,i)=>{
+          const st={"done":"완료","progress":"진행 중","waiting":"대기","blocked":"차단"};
+          const assignee=wMap[t.assignee_id]||(t.workers?t.workers.name:"")||"";
+          rows.push([
+            i===0?c.id:"", i===0?c.name:"", i===0?tm.l:"",
+            i===0?(GATE_L[c.gate]||c.gate):"", i===0?(VER_L[c.version_id]||c.version_id||""):"",
+            i===0?(c.owner||""):"", i===0?(c.start_date||""):"", i===0?(c.end_date||""):"",
+            t.id, t.title||"", assignee, st[t.status]||t.status||"",
+            t.start_date||"", t.end_date||"", t.days||t.estimated_days||"",
+            t.jira_url||"", t.notes||""
+          ]);
+        });
+      }
+    });
+
+    // BOM + CSV
+    const esc=v=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s};
+    const csv="\uFEFF"+rows.map(r=>r.map(esc).join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download="pipeline_export_"+new Date().toISOString().slice(0,10)+".csv";
+    a.click();URL.revokeObjectURL(url);
+  };
+
   const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
   const st=useMemo(()=>({t:ct.length,cr:ct.filter(c=>c.alert==="critical").length,w:ct.filter(c=>c.alert==="warning").length}),[ct]);
 
@@ -1857,6 +1905,7 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
+        <button className="bt bt-s" onClick={exportCSV} title="전체 데이터를 CSV로 내보내기">📤 CSV 내보내기</button>
         {user&&(user.is_lead||user.is_team_lead)&&<button className="bt bt-s" onClick={()=>setImportModal(true)} title="xlsx 시트 가져오기">📥 시트 가져오기</button>}
         {user&&<span className="user-badge" onClick={()=>setUserModal(true)} title="사용자 변경">
           {user.is_team_lead?"★★":user.is_lead?"★":""}{user.name}<span className="role">{roleLabel}</span>
