@@ -669,6 +669,194 @@ function TaskSheet({tasks,workers,contents,versions}){
   </div>
 }
 
+/* ═══ BUILD VIEW (Phase D) ═══ */
+function BuildView({contents,tasks,versions,milestones,workers}){
+  const[selVer,setSelVer]=useState("all");
+  const[expandedIds,setExpandedIds]=useState({});
+  const[exportModal,setExportModal]=useState(null);
+
+  const toggleExpand=(id)=>setExpandedIds(p=>({...p,[id]:!p[id]}));
+
+  // Group contents by version
+  const versionGroups=useMemo(()=>{
+    const groups={};
+    (versions||[]).forEach(v=>{groups[v.id]={version:v,contents:[],taskCount:0,doneCount:0}});
+    groups["unassigned"]={version:{id:"unassigned",label:"미배정",target_date:null,sort_order:999},contents:[],taskCount:0,doneCount:0};
+    (contents||[]).forEach(c=>{
+      const vid=c.version_id||"unassigned";
+      if(!groups[vid])groups[vid]={version:{id:vid,label:vid,target_date:null},contents:[],taskCount:0,doneCount:0};
+      const cTasks=(tasks||[]).filter(t=>t.content_id===c.id||(t.contents&&t.contents.name===c.name));
+      const done=cTasks.filter(t=>t.status==="done").length;
+      groups[vid].contents.push({...c,_tasks:cTasks,_done:done,_total:cTasks.length});
+      groups[vid].taskCount+=cTasks.length;
+      groups[vid].doneCount+=done;
+    });
+    return Object.values(groups)
+      .filter(g=>g.contents.length>0)
+      .sort((a,b)=>(a.version.sort_order||999)-(b.version.sort_order||999));
+  },[contents,tasks,versions]);
+
+  const filtered=selVer==="all"?versionGroups:versionGroups.filter(g=>g.version.id===selVer);
+
+  // Build note export
+  const generateBuildNote=(group)=>{
+    const v=group.version;
+    const lines=[];
+    lines.push("# "+v.label+(v.target_date?" ("+v.target_date+")":""));
+    lines.push("");
+
+    // Group contents by type
+    const byType={};
+    group.contents.forEach(c=>{
+      const tm=TM[c.type]||{l:c.type||"기타",i:""};
+      const key=tm.l;
+      if(!byType[key])byType[key]=[];
+      byType[key].push(c);
+    });
+
+    for(const[type,items] of Object.entries(byType)){
+      lines.push("## "+type);
+      items.forEach(c=>{
+        const gi=GATES.findIndex(g=>g.id===c.gate);
+        const gateLabel=GATES[gi]?(GATES[gi].l+" "+GATES[gi].s):(c.gate||"?");
+        const progress=c._total>0?Math.round(c._done/c._total*100):0;
+        lines.push("- **"+c.name+"** ["+gateLabel+"] "+progress+"% ("+c._done+"/"+c._total+")");
+        if(c._tasks?.length){
+          c._tasks.forEach(t=>{
+            const st=SL[t.status]||t.status;
+            const w=(workers||[]).find(x=>x.id===(t.assignee_id||(t.workers&&t.workers.id)));
+            const assignee=w?w.name:(t.workers?.name||"");
+            let line="  - "+st+": "+(t.title||"");
+            if(assignee)line+=" ("+assignee+")";
+            if(t.start_date&&t.end_date)line+=" "+t.start_date+"~"+t.end_date;
+            if(t.jira_url)line+=" ["+t.jira_url.split("/").pop()+"]";
+            lines.push(line);
+          });
+        }
+      });
+      lines.push("");
+    }
+
+    // Summary stats
+    lines.push("---");
+    lines.push("총 콘텐츠: "+group.contents.length+"건 / 태스크: "+group.taskCount+"건 (완료 "+group.doneCount+"건, "+Math.round(group.doneCount/Math.max(group.taskCount,1)*100)+"%)");
+    return lines.join("\n");
+  };
+
+  const copyBuildNote=(group)=>{
+    const note=generateBuildNote(group);
+    navigator.clipboard.writeText(note).then(()=>setExportModal(group.version.label));
+    setTimeout(()=>setExportModal(null),2000);
+  };
+
+  const overallStats=useMemo(()=>{
+    const s={contents:0,tasks:0,done:0,jira:0};
+    filtered.forEach(g=>{s.contents+=g.contents.length;s.tasks+=g.taskCount;s.done+=g.doneCount;
+      g.contents.forEach(c=>c._tasks?.forEach(t=>{if(t.jira_url)s.jira++}))});
+    return s;
+  },[filtered]);
+
+  return<div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+    {/* Header + filters */}
+    <div style={{padding:"12px 16px",borderBottom:"1px solid var(--bd)",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",flexShrink:0}}>
+      <span style={{fontSize:14,fontWeight:700,color:"var(--t1)"}}>빌드별 스펙</span>
+      <button className={"bt bt-s"+(selVer==="all"?" on":"")} onClick={()=>setSelVer("all")}>전체</button>
+      {(versions||[]).map(v=><button key={v.id} className={"bt bt-s"+(selVer===v.id?" on":"")} onClick={()=>setSelVer(v.id)}>{v.label}</button>)}
+      <div style={{marginLeft:"auto",fontSize:11,color:"var(--t4)"}}>
+        {overallStats.contents}건 콘텐츠 / {overallStats.tasks}건 태스크 ({overallStats.done}건 완료, {Math.round(overallStats.done/Math.max(overallStats.tasks,1)*100)}%)
+      </div>
+    </div>
+
+    {/* Version sections */}
+    <div style={{flex:1,overflow:"auto",padding:16}}>
+      {filtered.map(group=>{
+        const v=group.version;
+        const progress=group.taskCount>0?Math.round(group.doneCount/group.taskCount*100):0;
+        const daysLeft=v.target_date?Math.ceil((new Date(v.target_date)-new Date())/(24*60*60*1000)):null;
+        const urgent=daysLeft!==null&&daysLeft<=14&&progress<80;
+
+        return<div key={v.id} style={{marginBottom:16,border:"1px solid var(--bd)",borderRadius:"var(--r)",background:"var(--bg)",overflow:"hidden"}}>
+          {/* Version header */}
+          <div style={{padding:"10px 16px",background:urgent?"var(--rd-bg)":"var(--bg3)",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid var(--bd)"}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:15,fontWeight:700,color:"var(--t1)"}}>{v.label}</span>
+                {v.target_date&&<span style={{fontSize:12,color:"var(--t3)"}}>{v.target_date}</span>}
+                {daysLeft!==null&&<span className={"b "+(daysLeft<=0?"b-r":daysLeft<=14?"b-o":daysLeft<=30?"b-a":"b-g")}>
+                  {daysLeft<=0?"지남":"D-"+daysLeft}
+                </span>}
+                <span style={{fontSize:11,color:"var(--t4)"}}>{group.contents.length}건 콘텐츠 / {group.taskCount}건 태스크</span>
+              </div>
+              {/* Progress bar */}
+              <div style={{display:"flex",gap:2,marginTop:6,height:6}}>
+                {group.taskCount>0?<>
+                  <div style={{width:progress+"%",background:"var(--gn)",borderRadius:3,transition:"width .3s"}}/>
+                  <div style={{flex:1,background:"var(--bg3)",borderRadius:3}}/>
+                </>:<div style={{flex:1,background:"var(--bg3)",borderRadius:3}}/>}
+              </div>
+              <div style={{fontSize:10,color:"var(--t4)",marginTop:3}}>{progress}% 완료 ({group.doneCount}/{group.taskCount})</div>
+            </div>
+            <button className="bt bt-s" onClick={()=>copyBuildNote(group)} title="빌드 노트를 클립보드에 복사">
+              {exportModal===v.label?"복사됨!":"📋 빌드 노트"}
+            </button>
+          </div>
+
+          {/* Contents list */}
+          <div style={{padding:"0 4px"}}>
+            {group.contents.sort((a,b)=>{
+              const ga=GATES.findIndex(g=>g.id===a.gate);const gb=GATES.findIndex(g=>g.id===b.gate);
+              return gb-ga||(a.priority||0)-(b.priority||0);
+            }).map(c=>{
+              const tm=TM[c.type]||{i:"",l:c.type};
+              const gi=GATES.findIndex(g=>g.id===c.gate);const gate=GATES[gi];
+              const expanded=expandedIds[c.id];
+              const prog=c._total>0?Math.round(c._done/c._total*100):0;
+
+              return<div key={c.id} style={{borderBottom:"1px solid var(--bg3)"}}>
+                <div onClick={()=>toggleExpand(c.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",cursor:"pointer",fontSize:12}}>
+                  <span style={{fontSize:14,flexShrink:0}}>{tm.i||"📦"}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                    <div style={{fontSize:10,color:"var(--t4)",marginTop:1}}>{c.owner||"미정"} · {c._total}건 태스크</div>
+                  </div>
+                  {gate&&<span className="b" style={{background:gate.c+"18",color:gate.c,fontSize:10}}>{gate.l} {gate.s}</span>}
+                  {/* Mini progress */}
+                  <div style={{width:48,height:4,background:"var(--bg3)",borderRadius:2,flexShrink:0}}>
+                    <div style={{width:prog+"%",height:4,background:prog===100?"var(--gn)":"var(--ac)",borderRadius:2}}/>
+                  </div>
+                  <span style={{fontSize:10,color:"var(--t4)",width:30,textAlign:"right"}}>{prog}%</span>
+                  <span style={{fontSize:10,color:"var(--t4)",transform:expanded?"rotate(90deg)":"",transition:"transform .15s"}}>▶</span>
+                </div>
+
+                {/* Expanded task list */}
+                {expanded&&<div style={{padding:"0 12px 8px 36px"}}>
+                  {(c._tasks||[]).length===0?<div style={{fontSize:11,color:"var(--t4)"}}>태스크 없음</div>:
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead><tr style={{background:"var(--bg3)"}}>
+                      <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>상태</th>
+                      <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>태스크</th>
+                      <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>담당</th>
+                      <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>일정</th>
+                      <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>JIRA</th>
+                    </tr></thead>
+                    <tbody>{c._tasks.map(t=>{
+                      const w=(workers||[]).find(x=>x.id===t.assignee_id);
+                      return<tr key={t.id} style={{borderBottom:"1px solid var(--bg3)"}}>
+                        <td style={{padding:"3px 8px"}}><D s={t.status}/></td>
+                        <td style={{padding:"3px 8px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</td>
+                        <td style={{padding:"3px 8px",color:"var(--t3)"}}>{w?.name||""}</td>
+                        <td style={{padding:"3px 8px",color:"var(--t4)",whiteSpace:"nowrap"}}>{t.start_date&&t.end_date?t.start_date.slice(5)+"~"+t.end_date.slice(5):""}</td>
+                        <td style={{padding:"3px 8px"}}>{t.jira_url?<a href={t.jira_url} target="_blank" rel="noopener" style={{color:"var(--ac)",textDecoration:"none",fontSize:10}}>🎫{t.jira_url.split("/").pop()}</a>:""}</td>
+                      </tr>})}</tbody>
+                  </table>}
+                </div>}
+              </div>})}
+          </div>
+        </div>})}
+    </div>
+  </div>;
+}
+
 /* ═══ SLOT STATUS ═══ */
 function SlotView({workers,tasks}){
   const[teamTab,setTT]=useState("all");
@@ -1683,7 +1871,7 @@ function App(){
 
     {/* Nav */}
     <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
-      {[{id:"pipeline",l:"파이프라인"},{id:"gantt",l:"간트 차트"},{id:"tasks",l:"업무 시트"},{id:"slots",l:"슬롯 상태"},{id:"add",l:"+ 등록"}].map(v=>
+      {[{id:"pipeline",l:"파이프라인"},{id:"build",l:"빌드 스펙"},{id:"gantt",l:"간트 차트"},{id:"tasks",l:"업무 시트"},{id:"slots",l:"슬롯 상태"},{id:"add",l:"+ 등록"}].map(v=>
         <button key={v.id} className={"bt"+(view===v.id?" on":"")} onClick={()=>setV(v.id)}>{v.l}</button>)}
       {view==="pipeline"&&<div style={{marginLeft:"auto",display:"flex",gap:4}}>
         <button className={"bt bt-s"+(fv==="all"?" on":"")} onClick={()=>setFv("all")}>전체</button>
@@ -1695,6 +1883,7 @@ function App(){
       {ld?<div style={{textAlign:"center",padding:60,fontSize:15,color:"var(--t3)"}}>데이터를 불러오는 중...</div>:
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load}/>}
+        {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct}/>}
         {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
