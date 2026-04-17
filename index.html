@@ -81,7 +81,7 @@ const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null)};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null)};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -819,6 +819,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
   const[dragId,setDragId]=useState(null);
   const[rightW,setRightW]=useState(420);
   const[reasonReq,setReasonReq]=useState(null); // {title, oldVal, newVal, onConfirm}
+  const[jiraModal,setJiraModal]=useState(false);
   const splitRef=useRef(null);
   const draggingRef=useRef(false);
   useEffect(()=>{
@@ -972,7 +973,14 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
           {nextGate&&<button className={"bt bt-g"+(canFwd?"":" disabled-ctrl")} onClick={canFwd?fwdGate:undefined}
             title={canFwd?"":sel.locked?"팀장 잠금 해제 필요":nextGate.approval==="lead2"?"팀장 승인 필요":"파트장 권한 필요"}
             style={{width:"100%",marginBottom:8}}>{nextGate.l} {nextGate.s}로 전환 →</button>}
-          {sel.locked&&user?.is_team_lead&&<button className="bt" onClick={unlockContent} style={{width:"100%",marginBottom:12}}>🔓 잠금 해제</button>}
+          {sel.locked&&user?.is_team_lead&&<button className="bt" onClick={unlockContent} style={{width:"100%",marginBottom:8}}>🔓 잠금 해제</button>}
+
+          {/* JIRA create button */}
+          {(user?.is_lead||user?.is_team_lead)&&<button className="bt" onClick={()=>setJiraModal(true)}
+            style={{width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <span style={{fontSize:14}}>🎫</span> JIRA 일감 생성
+            {tasks.filter(t=>t.jira_url).length>0&&<span style={{fontSize:10,color:"var(--gn)",fontWeight:600}}>({tasks.filter(t=>t.jira_url).length}건 연결됨)</span>}
+          </button>}
 
           {/* Tabs */}
           <div className="tab-row">
@@ -986,7 +994,11 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
                 <D s={t.status}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title||t.task_name}</div>
-                  <div style={{fontSize:10,color:"var(--t4)"}}>{t.part_id} · {t.estimated_days||"?"}일</div>
+                  <div style={{fontSize:10,color:"var(--t4)",display:"flex",alignItems:"center",gap:4}}>
+                    {t.part_id} · {t.estimated_days||t.days||"?"}일
+                    {t.jira_url&&<a href={t.jira_url} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}
+                      style={{color:"var(--ac)",fontSize:9,textDecoration:"none"}} title={t.jira_url}>🎫{t.jira_url.split("/").pop()}</a>}
+                  </div>
                 </div>
                 <select disabled={!ok} value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)}
                   title={ok?"":"본인 태스크만 변경 가능"}
@@ -1013,6 +1025,8 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
     </div>
     {reasonReq&&<ReasonModal title={reasonReq.title} oldVal={reasonReq.oldVal} newVal={reasonReq.newVal}
       onSave={reasonReq.onConfirm} onClose={()=>setReasonReq(null)}/>}
+    {jiraModal&&sel&&<JiraPreviewModal content={sel} tasks={tasks} versions={vr} workers={wk} user={user}
+      onClose={()=>setJiraModal(false)} onRefresh={()=>{db.tasks(sel.id).then(setTasks);onRefresh(true)}}/>}
   </div>
 }
 
@@ -1060,6 +1074,200 @@ function UserModal({workers,onPick,onClose,canClose}){
       </div>
     </div>
   </div>
+}
+
+/* ═══ JIRA PREVIEW MODAL ═══ */
+function renderJiraTemplate(tpl,vars){
+  if(!tpl)return"";
+  return tpl.replace(/\{\{(\w+)\}\}/g,(m,k)=>vars[k]!=null?String(vars[k]):"");
+}
+function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,onRefresh}){
+  const[templates,setTemplates]=useState([]);
+  const[selTpl,setSelTpl]=useState(null);
+  const[checked,setChecked]=useState({});
+  const[creating,setCreating]=useState(false);
+  const[results,setResults]=useState(null);
+  const[previewIdx,setPreviewIdx]=useState(0);
+  const[editSummary,setEditSummary]=useState({});
+  const[editDesc,setEditDesc]=useState({});
+
+  useEffect(()=>{db.jiraTemplates().then(ts=>{setTemplates(ts||[]);if(ts?.length)setSelTpl(ts[0])})},[]);
+
+  const eligibleTasks=useMemo(()=>(allTasks||[]).filter(t=>!t.jira_url),[allTasks]);
+  const linkedTasks=useMemo(()=>(allTasks||[]).filter(t=>t.jira_url),[allTasks]);
+
+  useEffect(()=>{const m={};eligibleTasks.forEach(t=>{m[t.id]=true});setChecked(m)},[eligibleTasks]);
+
+  const checkedTasks=useMemo(()=>eligibleTasks.filter(t=>checked[t.id]),[eligibleTasks,checked]);
+
+  const tm=TM[content?.type]||{};
+  const ver=versions?.find(v=>v.id===content?.version_id);
+  const trackerUrl="https://got-contentsdesign-pipeline-er8j.vercel.app/?content="+content?.id;
+
+  const buildVars=(task)=>{
+    const w=workers?.find(x=>x.id===task.assignee_id);
+    return{
+      content_name:content?.name||"",
+      content_type:content?.type||"",
+      content_type_label:tm.l||content?.type||"",
+      task_title:task.title||"",
+      version_label:ver?.label||"",
+      version_date:ver?.target_date||"",
+      start_date:task.start_date||"",
+      end_date:task.end_date||"",
+      estimated_days:task.days||task.estimated_days||"",
+      part_label:PART_LABELS[w?.part_id]||"",
+      assignee_name:w?.name||"",
+      doc_link:content?.doc_url||"",
+      tracker_url:trackerUrl,
+      owner:content?.owner||""
+    };
+  };
+
+  const renderPreview=(task)=>{
+    if(!selTpl||!task)return{summary:"",description:""};
+    const vars=buildVars(task);
+    return{
+      summary:editSummary[task.id]!=null?editSummary[task.id]:renderJiraTemplate(selTpl.summary_template,vars),
+      description:editDesc[task.id]!=null?editDesc[task.id]:renderJiraTemplate(selTpl.description_template,vars)
+    };
+  };
+
+  const handleCreate=async()=>{
+    if(!user||(!user.is_lead&&!user.is_team_lead)){alert("파트장 권한 필요");return}
+    if(checkedTasks.length===0)return;
+    setCreating(true);
+    const res=[];
+    for(const task of checkedTasks){
+      const preview=renderPreview(task);
+      const payload={
+        fields:{
+          project:{key:selTpl?.project_key||"PROJECTT"},
+          issuetype:{name:selTpl?.issue_type||"Task"},
+          summary:preview.summary,
+          description:preview.description,
+          priority:{name:selTpl?.priority||"Medium"},
+          labels:selTpl?.labels||["auto-generated","from-tracker"]
+        }
+      };
+      // Log the creation attempt (actual JIRA call via Chrome extension - Step 2)
+      await db.addJiraLog({
+        task_id:task.id,
+        content_id:content.id,
+        template_key:selTpl?.template_key||"default",
+        created_by:user.name,
+        payload:payload,
+        status:"pending"
+      });
+      res.push({task_id:task.id,title:task.title,payload,status:"pending"});
+    }
+    setResults(res);
+    setCreating(false);
+  };
+
+  if(results){
+    return<div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{minWidth:480}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">JIRA 생성 준비 완료</div>
+        <div className="modal-b">
+          <div style={{fontSize:12,color:"var(--t3)",marginBottom:12}}>
+            {results.length}건의 JIRA 페이로드가 생성되었습니다.
+            <br/>Chrome 확장 프로그램 연결 후 실제 JIRA 일감이 생성됩니다. (Step 2)
+          </div>
+          {results.map((r,i)=><div key={i} style={{padding:"6px 10px",background:"var(--bg3)",borderRadius:6,marginBottom:4,fontSize:12}}>
+            <div style={{fontWeight:600,color:"var(--t1)"}}>{r.payload.fields.summary}</div>
+            <div style={{color:"var(--t4)",marginTop:2}}>Project: {r.payload.fields.project.key} / Type: {r.payload.fields.issuetype.name}</div>
+          </div>)}
+        </div>
+        <div className="modal-f">
+          <button className="bt bt-g" onClick={onClose}>확인</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  const curTask=checkedTasks[previewIdx]||checkedTasks[0];
+  const curPreview=curTask?renderPreview(curTask):{summary:"",description:""};
+
+  return<div className="modal-bg" onClick={onClose}>
+    <div className="modal" style={{minWidth:560,maxWidth:640}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span>JIRA 일감 생성 미리보기</span>
+        <span style={{fontSize:11,color:"var(--t4)"}}>{content?.name}</span>
+      </div>
+      <div className="modal-b" style={{maxHeight:"60vh",overflow:"auto"}}>
+        {/* Template selector */}
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+          <label style={{fontSize:12,color:"var(--t3)",fontWeight:500}}>템플릿:</label>
+          <select value={selTpl?.id||""} onChange={e=>{const t=templates.find(x=>String(x.id)===e.target.value);if(t)setSelTpl(t)}}
+            style={{fontSize:12,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"inherit"}}>
+            {templates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+
+        {/* Already linked */}
+        {linkedTasks.length>0&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:600,color:"var(--gn)",marginBottom:4}}>JIRA 연결됨 ({linkedTasks.length}건)</div>
+          {linkedTasks.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:11,color:"var(--t3)"}}>
+            <span style={{color:"var(--gn)"}}>&#10003;</span>
+            <span>{t.title}</span>
+            <a href={t.jira_url} target="_blank" rel="noopener" style={{color:"var(--ac)",fontSize:10}}>{t.jira_url?.split("/").pop()}</a>
+          </div>)}
+        </div>}
+
+        {/* Eligible tasks checkboxes */}
+        {eligibleTasks.length>0?<>
+          <div style={{fontSize:11,fontWeight:600,color:"var(--t2)",marginBottom:6}}>생성 대상 ({checkedTasks.length}/{eligibleTasks.length}건 선택)</div>
+          <div style={{marginBottom:12,maxHeight:140,overflow:"auto",border:"1px solid var(--bd)",borderRadius:6,padding:6}}>
+            {eligibleTasks.map((t,i)=><label key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:12,cursor:"pointer",
+              background:curTask?.id===t.id?"var(--ac-bg)":"transparent",borderRadius:4,paddingLeft:4}}
+              onClick={()=>setPreviewIdx(eligibleTasks.indexOf(t))}>
+              <input type="checkbox" checked={!!checked[t.id]} onChange={e=>{setChecked(p=>({...p,[t.id]:e.target.checked}))}} style={{accentColor:"var(--ac)"}}/>
+              <D s={t.status}/>
+              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
+              <span style={{fontSize:10,color:"var(--t4)"}}>{t.days||"?"}일</span>
+            </label>)}
+          </div>
+
+          {/* Preview for selected task */}
+          {curTask&&<div style={{border:"1px solid var(--bd)",borderRadius:8,overflow:"hidden"}}>
+            <div style={{padding:"8px 12px",background:"var(--bg3)",fontSize:11,fontWeight:600,color:"var(--t2)",display:"flex",justifyContent:"space-between"}}>
+              <span>미리보기: {curTask.title}</span>
+              {checkedTasks.length>1&&<div style={{display:"flex",gap:4}}>
+                <button className="bt bt-s" disabled={previewIdx<=0} onClick={()=>setPreviewIdx(p=>p-1)} style={{padding:"1px 6px"}}>&#9664;</button>
+                <span style={{fontSize:10,color:"var(--t4)",lineHeight:"22px"}}>{previewIdx+1}/{checkedTasks.length}</span>
+                <button className="bt bt-s" disabled={previewIdx>=checkedTasks.length-1} onClick={()=>setPreviewIdx(p=>p+1)} style={{padding:"1px 6px"}}>&#9654;</button>
+              </div>}
+            </div>
+            <div style={{padding:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:"6px 8px",fontSize:12,marginBottom:10}}>
+                <span style={{color:"var(--t4)",fontWeight:500}}>Project</span><span>{selTpl?.project_key||"PROJECTT"}</span>
+                <span style={{color:"var(--t4)",fontWeight:500}}>Type</span><span>{selTpl?.issue_type||"Task"}</span>
+                <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{selTpl?.priority||"Medium"}</span>
+                <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{(selTpl?.labels||[]).join(", ")}</span>
+              </div>
+              <div style={{marginBottom:8}}>
+                <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>Summary</label>
+                <input value={curPreview.summary} onChange={e=>setEditSummary(p=>({...p,[curTask.id]:e.target.value}))}
+                  style={{width:"100%",fontSize:12,padding:"6px 10px",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"inherit",marginTop:3}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>Description</label>
+                <textarea value={curPreview.description} onChange={e=>setEditDesc(p=>({...p,[curTask.id]:e.target.value}))}
+                  style={{width:"100%",minHeight:120,fontSize:11,padding:"6px 10px",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"inherit",resize:"vertical",marginTop:3,lineHeight:1.5}}/>
+              </div>
+            </div>
+          </div>}
+        </>:<div style={{fontSize:12,color:"var(--t4)",padding:12,textAlign:"center"}}>모든 태스크가 이미 JIRA에 연결되어 있습니다.</div>}
+      </div>
+      <div className="modal-f">
+        <button className="bt" onClick={onClose}>취소</button>
+        <button className="bt bt-g" disabled={creating||checkedTasks.length===0} onClick={handleCreate}>
+          {creating?"생성 중...":"JIRA 생성 승인 ("+checkedTasks.length+"건)"}
+        </button>
+      </div>
+    </div>
+  </div>;
 }
 
 /* ═══ REASON MODAL ═══ */
