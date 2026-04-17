@@ -1264,6 +1264,238 @@ function UserModal({workers,onPick,onClose,canClose}){
   </div>
 }
 
+/* ═══ JIRA SYNC MODAL ═══ */
+function JiraSyncModal({tasks,onClose,onDone}){
+  const[mode,setMode]=useState("auto"); // auto, manual
+  const[creds,setCreds]=useState(()=>{try{return JSON.parse(localStorage.getItem("jira_creds")||"{}")}catch{return{}}});
+  const[syncing,setSyncing]=useState(false);
+  const[progress,setProgress]=useState({done:0,total:0,errors:[]});
+  const[results,setResults]=useState(null);
+  const[manualText,setManualText]=useState("");
+
+  const jiraTasks=useMemo(()=>(tasks||[]).filter(t=>t.jira_url),[tasks]);
+  const extractKey=(url)=>{const m=(url||"").match(/([A-Z]+-\d+)/);return m?m[1]:null};
+
+  // JIRA status -> tracker status mapping
+  const STATUS_MAP={"To Do":"waiting","Open":"waiting","Reopened":"waiting",
+    "In Progress":"progress","In Review":"progress","In Development":"progress",
+    "Done":"done","Closed":"done","Resolved":"done","완료":"done",
+    "Blocked":"blocked","On Hold":"blocked"};
+
+  const syncAuto=async()=>{
+    if(!creds.user||!creds.pass){alert("JIRA 계정 정보를 입력해주세요.");return}
+    localStorage.setItem("jira_creds",JSON.stringify({user:creds.user,pass:creds.pass}));
+    setSyncing(true);
+    const total=jiraTasks.length;
+    const errors=[];const updated=[];const unchanged=[];
+    setProgress({done:0,total,errors:[]});
+
+    // Batch fetch: JQL query for all keys
+    const keys=jiraTasks.map(t=>extractKey(t.jira_url)).filter(Boolean);
+    const batchSize=50;
+
+    for(let i=0;i<keys.length;i+=batchSize){
+      const batch=keys.slice(i,i+batchSize);
+      const jql="key in ("+batch.join(",")+")";
+      try{
+        const resp=await fetch("https://jira.nmn.io/rest/api/2/search?jql="+encodeURIComponent(jql)+"&fields=status,summary&maxResults="+batchSize,{
+          headers:{"Authorization":"Basic "+btoa(creds.user+":"+creds.pass),"Content-Type":"application/json"}
+        });
+        if(!resp.ok){
+          if(resp.status===401){errors.push("인증 실패 (401) - 계정 정보를 확인하세요");break}
+          errors.push("JIRA API 오류: "+resp.status);continue;
+        }
+        const data=await resp.json();
+        for(const issue of(data.issues||[])){
+          const jiraKey=issue.key;
+          const jiraStatus=issue.fields?.status?.name||"";
+          const newStatus=STATUS_MAP[jiraStatus];
+          if(!newStatus)continue;
+
+          // Find matching task
+          const task=jiraTasks.find(t=>extractKey(t.jira_url)===jiraKey);
+          if(!task)continue;
+
+          if(task.status!==newStatus){
+            try{
+              await fetch(SU+"/rest/v1/tasks?id=eq."+task.id,{method:"PATCH",
+                headers:{...FH,"Content-Type":"application/json"},
+                body:JSON.stringify({status:newStatus})});
+              updated.push({key:jiraKey,title:task.title||issue.fields?.summary,old:task.status,new:newStatus,jiraStatus});
+            }catch(e){errors.push(jiraKey+": DB 업데이트 실패")}
+          }else{
+            unchanged.push(jiraKey);
+          }
+        }
+      }catch(e){
+        if(e.message?.includes("Failed to fetch")){
+          errors.push("CORS 차단 - JIRA 서버에 직접 접근할 수 없습니다. 수동 모드를 사용하세요.");
+          break;
+        }
+        errors.push("네트워크 오류: "+e.message);
+      }
+      setProgress({done:Math.min(i+batchSize,keys.length),total:keys.length,errors:[...errors]});
+    }
+    setResults({updated,unchanged:unchanged.length,errors,total:keys.length});
+    setSyncing(false);
+    if(updated.length>0&&onDone)onDone();
+  };
+
+  const syncManual=()=>{
+    // Parse pasted JIRA data (TSV or CSV from JIRA board export)
+    // Expected: Key, Status columns (or Jira Key | Status from HTML export)
+    const lines=manualText.trim().split("\n");
+    const updates=[];const errors=[];
+    const keyStatusPairs=[];
+
+    for(const line of lines){
+      // Try various formats
+      // Format 1: PROJECTT-12345 | In Progress | ...
+      // Format 2: PROJECTT-12345\tIn Progress\t...
+      // Format 3: [PROJECTT-12345](url) | Status | ...
+      const keyMatch=line.match(/([A-Z]+-\d+)/);
+      if(!keyMatch)continue;
+      const key=keyMatch[1];
+
+      // Find status in the line
+      let status=null;
+      for(const[jiraSt,trkSt] of Object.entries(STATUS_MAP)){
+        if(line.includes(jiraSt)){status=trkSt;break}
+      }
+      if(status)keyStatusPairs.push({key,status});
+    }
+
+    if(keyStatusPairs.length===0){
+      setResults({updated:[],unchanged:0,errors:["파싱 가능한 데이터가 없습니다. JIRA Key와 Status가 포함된 텍스트를 붙여넣으세요."],total:0});
+      return;
+    }
+
+    setSyncing(true);
+    const doSync=async()=>{
+      let updated=[];
+      for(const{key,status} of keyStatusPairs){
+        const task=jiraTasks.find(t=>extractKey(t.jira_url)===key);
+        if(!task)continue;
+        if(task.status!==status){
+          try{
+            await fetch(SU+"/rest/v1/tasks?id=eq."+task.id,{method:"PATCH",
+              headers:{...FH,"Content-Type":"application/json"},
+              body:JSON.stringify({status})});
+            updated.push({key,title:task.title,old:task.status,new:status,jiraStatus:""});
+          }catch(e){errors.push(key+": 업데이트 실패")}
+        }
+      }
+      setResults({updated,unchanged:keyStatusPairs.length-updated.length,errors,total:keyStatusPairs.length});
+      setSyncing(false);
+      if(updated.length>0&&onDone)onDone();
+    };
+    doSync();
+  };
+
+  const SL2={"done":"완료","progress":"진행 중","waiting":"대기","blocked":"차단"};
+
+  if(results){
+    return<div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{minWidth:500}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">JIRA 동기화 결과</div>
+        <div className="modal-b" style={{maxHeight:"60vh",overflow:"auto"}}>
+          <div style={{display:"flex",gap:12,marginBottom:12}}>
+            <div style={{flex:1,padding:10,background:"var(--gn-bg)",borderRadius:6,textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:700,color:"var(--gn)"}}>{results.updated.length}</div>
+              <div style={{fontSize:11,color:"var(--t3)"}}>상태 변경</div>
+            </div>
+            <div style={{flex:1,padding:10,background:"var(--bg3)",borderRadius:6,textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:700,color:"var(--t3)"}}>{results.unchanged}</div>
+              <div style={{fontSize:11,color:"var(--t3)"}}>변경 없음</div>
+            </div>
+            {results.errors.length>0&&<div style={{flex:1,padding:10,background:"var(--rd-bg)",borderRadius:6,textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:700,color:"var(--rd)"}}>{results.errors.length}</div>
+              <div style={{fontSize:11,color:"var(--t3)"}}>오류</div>
+            </div>}
+          </div>
+          {results.updated.length>0&&<div style={{marginBottom:10}}>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>변경된 태스크</div>
+            {results.updated.map((r,i)=><div key={i} style={{padding:"4px 8px",fontSize:11,borderBottom:"1px solid var(--bg3)",display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{color:"var(--ac)",fontWeight:600,width:110,flexShrink:0}}>{r.key}</span>
+              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</span>
+              <span style={{color:"var(--t4)"}}>{SL2[r.old]||r.old}</span>
+              <span style={{color:"var(--t4)"}}>→</span>
+              <span style={{color:"var(--gn)",fontWeight:600}}>{SL2[r.new]||r.new}</span>
+            </div>)}
+          </div>}
+          {results.errors.length>0&&<div>
+            <div style={{fontSize:12,fontWeight:600,color:"var(--rd)",marginBottom:4}}>오류</div>
+            {results.errors.map((e,i)=><div key={i} style={{fontSize:11,color:"var(--rd)",padding:"2px 0"}}>{e}</div>)}
+          </div>}
+        </div>
+        <div className="modal-f"><button className="bt bt-g" onClick={onClose}>확인</button></div>
+      </div>
+    </div>;
+  }
+
+  return<div className="modal-bg" onClick={onClose}>
+    <div className="modal" style={{minWidth:500,maxWidth:580}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span>JIRA 상태 동기화</span>
+        <span style={{fontSize:11,color:"var(--t4)"}}>JIRA 연결된 태스크: {jiraTasks.length}건</span>
+      </div>
+      <div className="modal-b">
+        {/* Mode tabs */}
+        <div className="tab-row" style={{marginBottom:12}}>
+          <button className={mode==="auto"?"on":""} onClick={()=>setMode("auto")}>자동 (JIRA API)</button>
+          <button className={mode==="manual"?"on":""} onClick={()=>setMode("manual")}>수동 (붙여넣기)</button>
+        </div>
+
+        {mode==="auto"&&<>
+          <div style={{fontSize:12,color:"var(--t3)",marginBottom:10}}>
+            JIRA REST API로 {jiraTasks.length}건의 상태를 자동 조회합니다.
+            사내 네트워크에서만 동작합니다.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+            <div>
+              <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>JIRA ID</label>
+              <input value={creds.user||""} onChange={e=>setCreds(p=>({...p,user:e.target.value}))} placeholder="jira@company.com"
+                style={{width:"100%",padding:"7px 10px",fontSize:12,border:"1px solid var(--bd)",borderRadius:4,marginTop:3,fontFamily:"inherit"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>비밀번호 / API Token</label>
+              <input type="password" value={creds.pass||""} onChange={e=>setCreds(p=>({...p,pass:e.target.value}))} placeholder="********"
+                style={{width:"100%",padding:"7px 10px",fontSize:12,border:"1px solid var(--bd)",borderRadius:4,marginTop:3,fontFamily:"inherit"}}/>
+            </div>
+          </div>
+          {syncing&&<div style={{padding:10,background:"var(--bg3)",borderRadius:6,fontSize:12}}>
+            동기화 중... {progress.done}/{progress.total}
+            <div style={{height:4,background:"var(--bd)",borderRadius:2,marginTop:6}}>
+              <div style={{height:4,background:"var(--ac)",borderRadius:2,width:(progress.total?progress.done/progress.total*100:0)+"%",transition:"width .3s"}}/>
+            </div>
+            {progress.errors.length>0&&<div style={{color:"var(--rd)",marginTop:6}}>{progress.errors[progress.errors.length-1]}</div>}
+          </div>}
+        </>}
+
+        {mode==="manual"&&<>
+          <div style={{fontSize:12,color:"var(--t3)",marginBottom:8}}>
+            JIRA에서 복사한 데이터를 붙여넣으세요. JIRA Key와 Status가 포함된 텍스트면 됩니다.
+            <br/>(보드 복사, CSV 내보내기, 검색 결과 복사 등)
+          </div>
+          <textarea value={manualText} onChange={e=>setManualText(e.target.value)}
+            placeholder={"PROJECTT-12345\tIn Progress\t제목...\nPROJECTT-12346\tDone\t제목..."}
+            style={{width:"100%",minHeight:160,fontSize:11,padding:"8px 10px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"'Consolas',monospace",resize:"vertical",lineHeight:1.5}}/>
+          <div style={{fontSize:10,color:"var(--t4)",marginTop:4}}>
+            지원 상태: To Do, In Progress, Done, Closed, Resolved, Blocked, Open
+          </div>
+        </>}
+      </div>
+      <div className="modal-f">
+        <button className="bt" onClick={onClose}>취소</button>
+        <button className="bt bt-g" disabled={syncing||(mode==="auto"&&(!creds.user||!creds.pass))||(mode==="manual"&&!manualText.trim())}
+          onClick={mode==="auto"?syncAuto:syncManual}>
+          {syncing?"동기화 중...":"동기화 실행 ("+jiraTasks.length+"건)"}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
 /* ═══ JIRA PREVIEW MODAL ═══ */
 function renderJiraTemplate(tpl,vars){
   if(!tpl)return"";
@@ -1845,6 +2077,8 @@ function App(){
 
   const handleJump=(contentId)=>{setV("pipeline");setJumpId(contentId);setTimeout(()=>setJumpId(null),1500)};
 
+  const[jiraSyncModal,setJiraSyncModal]=useState(false);
+
   const exportCSV=()=>{
     const GATE_L={"G0":"설정/방향","G1":"IP검수","G2":"컨셉기획","G3":"구현기획","G4":"아트요청","G5":"구현/제작","G6":"재미검증","G7":"QA/폴리싱","DONE":"완료"};
     const VER_L={};(vr||[]).forEach(v=>{VER_L[v.id]=v.label+" ("+v.target_date+")"});
@@ -1905,6 +2139,7 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
+        <button className="bt bt-s" onClick={()=>setJiraSyncModal(true)} title="JIRA 상태를 트래커에 동기화">🔄 JIRA 동기화</button>
         <button className="bt bt-s" onClick={exportCSV} title="전체 데이터를 CSV로 내보내기">📤 CSV 내보내기</button>
         {user&&(user.is_lead||user.is_team_lead)&&<button className="bt bt-s" onClick={()=>setImportModal(true)} title="xlsx 시트 가져오기">📥 시트 가져오기</button>}
         {user&&<span className="user-badge" onClick={()=>setUserModal(true)} title="사용자 변경">
@@ -1942,6 +2177,7 @@ function App(){
 
     {userModal&&wk.length>0&&<UserModal workers={wk} onPick={pickUser} onClose={()=>setUserModal(false)} canClose={!!user}/>}
     {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={()=>load(true)}/>}
+    {jiraSyncModal&&<JiraSyncModal tasks={allT} onClose={()=>setJiraSyncModal(false)} onDone={()=>load(true)}/>}
   </div>
 }
 ReactDOM.render(<App/>,document.getElementById("app"));
