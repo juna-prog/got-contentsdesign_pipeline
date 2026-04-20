@@ -237,6 +237,8 @@ function GanttView({tasks,workers,milestones,parts,contents}){
   },[]);
   useEffect(()=>{const el=ganttWrapRef.current;if(!el)return;const h=e=>{if(!e.ctrlKey)return;e.preventDefault();setGS(s=>Math.max(30,Math.min(50,s+(e.deltaY<0?0.2:-0.2))))};el.addEventListener("wheel",h,{passive:false});return()=>el.removeEventListener("wheel",h)},[]);
   useEffect(()=>{if(!workerPopup)return;const h=e=>{if(!e.target.closest('[style*="z-index: 200"]')&&!e.target.closest('.gantt-name'))setWP(null)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[workerPopup]);
+  // Auto-scroll to Today on mount
+  useEffect(()=>{const el=chartRef.current;if(!el||todayX===null)return;const offset=40;setTimeout(()=>{el.scrollLeft=Math.max(0,todayX-offset)},200)},[todayX]);
 
   // Timeline config - day-based like MilestoneTimeline
   const startDate=new Date(2026,3,1); // Apr 1
@@ -472,7 +474,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
               const w=Math.max(20,x2-x1);const bc=BAR_C[t.status]||BAR_C.waiting;
               const isC=!!r._is_child;const kidCount=t._child_count||0;
               return<div key={"tr"+ri} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
-                {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"absolute",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
+                {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
                 <div className="gantt-bar" style={{left:x1+(isC?16:0),top:6,width:w,background:bc,opacity:isC?.55:.85,border:isC?`1px dashed ${bc}`:undefined,height:isC?12:undefined}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})} onMouseLeave={()=>setTip(null)}>
                   {w>60?(isC?"└ ":"")+(t.title||t.task_name||""):""}</div>
