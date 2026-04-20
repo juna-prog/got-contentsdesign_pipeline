@@ -606,17 +606,22 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
       return true;
     };
     const filtered=rows.filter(r=>!r.parent_task_id).filter(r=>matchRow(r)||(r._children||[]).some(matchRow));
-    // Sort
-    const sortFn=(a,b)=>{
-      if(sortBy==="worker")return(a.workerName||"").localeCompare(b.workerName||"");
-      if(sortBy==="team")return(a.team||"").localeCompare(b.team||"")||(a.part||"").localeCompare(b.part||"");
-      if(sortBy==="part")return(a.part||"").localeCompare(b.part||"");
-      if(sortBy==="start")return(a.start_date||"9999").localeCompare(b.start_date||"9999");
-      if(sortBy==="end")return(a.end_date||"9999").localeCompare(b.end_date||"9999");
-      if(sortBy==="status"){const o={blocked:0,progress:1,waiting:2,done:3};return(o[a.status]??9)-(o[b.status]??9)}
+    // Sort (support key and key_desc)
+    const sortKey=sortBy.replace(/_desc$/,"");const sortDesc=sortBy.endsWith("_desc");
+    const cmp=(a,b)=>{
+      if(sortKey==="worker")return(a.workerName||"").localeCompare(b.workerName||"");
+      if(sortKey==="team")return(a.team||"").localeCompare(b.team||"")||(a.part||"").localeCompare(b.part||"");
+      if(sortKey==="part")return(a.part||"").localeCompare(b.part||"");
+      if(sortKey==="content")return(a.contentName||"").localeCompare(b.contentName||"");
+      if(sortKey==="title")return(a.title||"").localeCompare(b.title||"");
+      if(sortKey==="start")return(a.start_date||"9999").localeCompare(b.start_date||"9999");
+      if(sortKey==="end")return(a.end_date||"9999").localeCompare(b.end_date||"9999");
+      if(sortKey==="days")return(a.days||9999)-(b.days||9999);
+      if(sortKey==="risk"){const o={"위험":0,"안정":1,"":2};return(o[a.risk]??9)-(o[b.risk]??9)}
+      if(sortKey==="status"){const o={blocked:0,progress:1,waiting:2,done:3};return(o[a.status]??9)-(o[b.status]??9)}
       return 0;
     };
-    if(sortBy!=="default")filtered.sort(sortFn);
+    if(sortKey!=="default")filtered.sort((a,b)=>{const r=cmp(a,b);return sortDesc?-r:r});
     const g={};filtered.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
     return g;
   },[tasks,workers,contents,teamTab,partFilter,statusFilter,assigneeFilter,searchQ,sortBy]);
@@ -667,24 +672,37 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
           <option value="all">담당자 전체</option>
           {assignees.map(a=><option key={a} value={a}>{a}</option>)}
         </select>
-        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
-          <option value="default">기본 정렬</option>
-          <option value="team">팀별</option>
-          <option value="part">파트별</option>
-          <option value="worker">작업자별</option>
-          <option value="start">시작일순</option>
-          <option value="end">종료일순</option>
-          <option value="status">상태순</option>
-        </select>
+        {sortBy!=="default"&&<button className="bt bt-s" onClick={()=>setSortBy("default")} style={{fontSize:10,padding:"2px 6px"}}>정렬 초기화</button>}
       </div>
     </div>
 
     {/* Table */}
     <div style={{overflow:"auto",flex:1,padding:"0 4px"}}>
-      {/* Header */}
-      <div style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"8px 12px",borderBottom:"2px solid var(--bd)",fontSize:11,fontWeight:700,color:"var(--t3)",position:"sticky",top:0,background:"var(--bg)",zIndex:3}}>
-        <span>#</span><span>파트</span><span>담당자</span><span>카테고리</span><span>세부 내용</span><span>시작일</span><span>완료일</span><span>소요</span><span>일정 위험도</span>
-      </div>
+      {/* Header - sortable columns */}
+      {(()=>{
+        const cols=[
+          {key:"default",label:"#",w:"32px"},
+          {key:"part",label:"파트",w:"70px"},
+          {key:"worker",label:"담당자",w:"64px"},
+          {key:"content",label:"카테고리",w:"120px"},
+          {key:"title",label:"세부 내용",w:"1fr"},
+          {key:"start",label:"시작일",w:"80px"},
+          {key:"end",label:"완료일",w:"80px"},
+          {key:"days",label:"소요",w:"50px"},
+          {key:"risk",label:"위험도",w:"72px"},
+        ];
+        const curKey=sortBy.replace(/_desc$/,"");const isDesc=sortBy.endsWith("_desc");
+        const handleSort=(key)=>{
+          if(key==="default")return;
+          if(curKey===key){setSortBy(isDesc?key:key+"_desc")}
+          else{setSortBy(key)}
+        };
+        const arrow=(key)=>{if(curKey!==key)return"";return isDesc?" ▼":" ▲"};
+        return<div style={{display:"grid",gridTemplateColumns:cols.map(c=>c.w).join(" "),gap:4,padding:"8px 12px",borderBottom:"2px solid var(--bd)",fontSize:11,fontWeight:700,color:"var(--t3)",position:"sticky",top:0,background:"var(--bg)",zIndex:3}}>
+          {cols.map(c=><span key={c.key} onClick={()=>handleSort(c.key)}
+            style={{cursor:c.key==="default"?"default":"pointer",userSelect:"none",whiteSpace:"nowrap",color:curKey===c.key?"var(--ac)":"var(--t3)"}}>{c.label}{arrow(c.key)}</span>)}
+        </div>
+      })()}
       {sortedParts.map((part,pi)=>{const rows=grouped[part];return<div key={part}>
         <div style={{padding:"8px 12px",background:"var(--bg3)",cursor:"pointer",display:"flex",alignItems:"center",gap:6,borderBottom:"1px solid var(--bd)"}} onClick={()=>toggleC(part)}>
           <span style={{fontSize:10,color:"var(--t4)"}}>{(collapsed||{})[part]?"▶":"▼"}</span>
