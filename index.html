@@ -31,7 +31,7 @@
 .gate-drop.over{background:var(--ac-bg)}
 /* Gantt */
 .gantt-wrap{display:flex;flex:1;overflow:hidden}
-.gantt-names{width:200px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--bd);background:var(--bg)}
+.gantt-names{width:200px;flex-shrink:0;overflow-y:auto;overflow-x:hidden;border-right:1px solid var(--bd);background:var(--bg)}
 .gantt-chart{flex:1;overflow:auto;position:relative}
 .gantt-row{height:32px;display:flex;align-items:center;border-bottom:1px solid var(--bg3)}
 .gantt-name{padding:0 12px;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:32px;display:flex;align-items:center;border-bottom:1px solid var(--bg3)}
@@ -227,13 +227,19 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     el.addEventListener("mousedown",onDown);window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
     return()=>{el.removeEventListener("mousedown",onDown);window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
   },[]);
-  // Sync vertical scroll between names and chart
+  // Sync vertical scroll between names and chart (scroll + wheel)
   useEffect(()=>{
-    const n=namesRef.current,c=chartRef.current;if(!n||!c)return;let syncing=false;
-    const syncN=()=>{if(syncing)return;syncing=true;c.scrollTop=n.scrollTop;syncing=false};
-    const syncC=()=>{if(syncing)return;syncing=true;n.scrollTop=c.scrollTop;syncing=false};
-    n.addEventListener("scroll",syncN);c.addEventListener("scroll",syncC);
-    return()=>{n.removeEventListener("scroll",syncN);c.removeEventListener("scroll",syncC)};
+    const n=namesRef.current,c=chartRef.current;if(!n||!c)return;let source=null;let raf=null;
+    const clearSource=()=>{raf=requestAnimationFrame(()=>{source=null})};
+    const onScrollN=()=>{if(source==="chart")return;source="names";c.scrollTop=n.scrollTop;clearSource()};
+    const onScrollC=()=>{if(source==="names")return;source="chart";n.scrollTop=c.scrollTop;clearSource()};
+    // Wheel on chart: sync names (non-Ctrl wheel = vertical scroll)
+    const onWheelC=e=>{if(e.ctrlKey)return;n.scrollTop=c.scrollTop};
+    const onWheelN=e=>{if(e.ctrlKey)return;c.scrollTop=n.scrollTop};
+    n.addEventListener("scroll",onScrollN);c.addEventListener("scroll",onScrollC);
+    c.addEventListener("wheel",onWheelC,{passive:true});n.addEventListener("wheel",onWheelN,{passive:true});
+    return()=>{n.removeEventListener("scroll",onScrollN);c.removeEventListener("scroll",onScrollC);
+      c.removeEventListener("wheel",onWheelC);n.removeEventListener("wheel",onWheelN);if(raf)cancelAnimationFrame(raf)};
   },[]);
   useEffect(()=>{const el=ganttWrapRef.current;if(!el)return;const h=e=>{if(!e.ctrlKey)return;e.preventDefault();setGS(s=>Math.max(30,Math.min(50,s+(e.deltaY<0?0.2:-0.2))))};el.addEventListener("wheel",h,{passive:false});return()=>el.removeEventListener("wheel",h)},[]);
   useEffect(()=>{if(!workerPopup)return;const h=e=>{if(!e.target.closest('[style*="z-index: 200"]')&&!e.target.closest('.gantt-name'))setWP(null)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[workerPopup]);
