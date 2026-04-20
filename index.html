@@ -301,15 +301,19 @@ function GanttView({tasks,workers,milestones,parts,contents}){
   },[workers,teamFilter,partFilter]);
 
   // Map tasks to workers (including multi-assignees), optionally filtering done
-  const workerTasks=useMemo(()=>{
-    const m={};const added=new Set();
+  // Split into scheduled vs backlog (no start AND no end date, and not ongoing)
+  const{workerTasks,backlogTasks}=useMemo(()=>{
+    const m={};const bl=[];const added=new Set();
     const filtered=(tasks||[]).filter(t=>showDone||t.status!=="done");
     filtered.forEach(t=>{
+      const hasDate=t.start_date||t.end_date;
+      if(!hasDate){bl.push(t);return}
       if(t.assignee_id){if(!m[t.assignee_id])m[t.assignee_id]=[];m[t.assignee_id].push(t);added.add(t.assignee_id+'::'+t.id)}
       if(t.task_assignees){for(const ta of t.task_assignees){const k=ta.worker_id+'::'+t.id;if(!added.has(k)){if(!m[ta.worker_id])m[ta.worker_id]=[];m[ta.worker_id].push({...t,_is_secondary:ta.worker_id!==t.assignee_id});added.add(k)}}}
     });
-    return m;
+    return{workerTasks:m,backlogTasks:bl};
   },[tasks,showDone]);
+  const[showBacklog,setShowBacklog]=useState(false);
 
   // Position calc - day based
   const dateToX=(date)=>{
@@ -344,8 +348,21 @@ function GanttView({tasks,workers,milestones,parts,contents}){
         });
       }
     });
+    // Backlog section
+    if(showBacklog&&backlogTasks.length>0){
+      r.push({type:"header",pid:"_backlog",label:"\ubc31\ub85c\uadf8 (\uc77c\uc815 \ubbf8\uc9c0\uc815)",count:backlogTasks.length});
+      if(!collapsed["_backlog"]){
+        const blByW={};backlogTasks.forEach(t=>{const wid=t.assignee_id||"_none";blByW[wid]=(blByW[wid]||[]).concat(t)});
+        const wMapBL={};(workers||[]).forEach(w=>{wMapBL[w.id]=w});
+        Object.entries(blByW).forEach(([wid,wTasks])=>{
+          const w=wMapBL[wid]||{id:wid,name:"\ubbf8\ubc30\uc815",part_id:"other"};
+          r.push({type:"worker",worker:w,tasks:wTasks,expanded:!!expandedW["bl_"+wid]});
+          if(expandedW["bl_"+wid]) wTasks.forEach(t=>r.push({type:"task",task:t,worker:w}));
+        });
+      }
+    }
     return r;
-  },[groupedWorkers,collapsed,workerTasks,expandedW,expandedT]);
+  },[groupedWorkers,collapsed,workerTasks,expandedW,expandedT,showBacklog,backlogTasks,workers]);
 
   const toggleCollapse=(pid)=>setCol(p=>({...p,[pid]:!p[pid]}));
 
@@ -374,7 +391,11 @@ function GanttView({tasks,workers,milestones,parts,contents}){
         <span style={{fontSize:10,color:"var(--t4)",minWidth:28}}>{ganttScale.toFixed(1)}x</span>
         <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"var(--t3)",cursor:"pointer",marginLeft:8}}>
           <input type="checkbox" checked={showDone} onChange={e=>setShowDone(e.target.checked)} style={{accentColor:"var(--gn)"}}/>
-          완료 일감 표시
+          완료 표시
+        </label>
+        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"var(--t3)",cursor:"pointer"}}>
+          <input type="checkbox" checked={showBacklog} onChange={e=>setShowBacklog(e.target.checked)} style={{accentColor:"var(--or)"}}/>
+          백로그 ({backlogTasks.length})
         </label>
         <div style={{display:"flex",gap:6,marginLeft:8,fontSize:11}}>
           <span><span className="dot" style={{background:BAR_C.progress,marginRight:3,verticalAlign:"middle"}}/>진행</span>
@@ -542,14 +563,16 @@ function GanttView({tasks,workers,milestones,parts,contents}){
 }
 
 /* ═══ TASK SHEET ═══ */
-function TaskSheet({tasks,workers,contents,versions}){
-  const[teamTab,setTT]=useState("all");
-  const[partFilter,setPF]=useState("all");
-  const[statusFilter,setSF]=useState("all");
-  const[assigneeFilter,setAF]=useState("all");
-  const[collapsed,setCol]=useState(null); // null = not initialized yet
-  const[partOrder,setPartOrder]=useState(null); // custom part ordering
-  const[taskExpanded,setTE]=useState({}); // task-level expand (sub-tasks)
+function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
+  const teamTab=filters?.tsTeam||"all";const setTT=v=>onFilterChange?.("tsTeam",v);
+  const partFilter=filters?.tsPart||"all";const setPF=v=>onFilterChange?.("tsPart",v);
+  const statusFilter=filters?.tsStatus||"all";const setSF=v=>onFilterChange?.("tsStatus",v);
+  const assigneeFilter=filters?.tsAssignee||"all";const setAF=v=>onFilterChange?.("tsAssignee",v);
+  const searchQ=filters?.tsSearch||"";const setSearchQ=v=>onFilterChange?.("tsSearch",v);
+  const sortBy=filters?.tsSort||"default";const setSortBy=v=>onFilterChange?.("tsSort",v);
+  const[collapsed,setCol]=useState(null);
+  const[partOrder,setPartOrder]=useState(null);
+  const[taskExpanded,setTE]=useState({});
 
   // Group tasks by team->part->worker
   const grouped=useMemo(()=>{
@@ -573,18 +596,30 @@ function TaskSheet({tasks,workers,contents,versions}){
     rows.forEach(r=>{if(r.parent_task_id){if(!childrenMap.has(r.parent_task_id))childrenMap.set(r.parent_task_id,[]);childrenMap.get(r.parent_task_id).push(r)}});
     rows.forEach(r=>r._children=childrenMap.get(r.id)||[]);
     // Filter helper
+    const q=(searchQ||"").toLowerCase().trim();
     const matchRow=(r)=>{
       if(teamTab!=="all"&&r.team!==teamTab)return false;
       if(partFilter!=="all"&&r.partId!==partFilter)return false;
       if(statusFilter!=="all"&&r.status!==statusFilter)return false;
       if(assigneeFilter!=="all"&&r.workerName!==assigneeFilter&&!(r.allAssigneeNames||[]).includes(assigneeFilter))return false;
+      if(q&&!(r.workerName||"").toLowerCase().includes(q)&&!(r.contentName||"").toLowerCase().includes(q)&&!(r.title||"").toLowerCase().includes(q))return false;
       return true;
     };
-    // Include top-level rows if itself matches OR any child matches (force parent visible)
     const filtered=rows.filter(r=>!r.parent_task_id).filter(r=>matchRow(r)||(r._children||[]).some(matchRow));
+    // Sort
+    const sortFn=(a,b)=>{
+      if(sortBy==="worker")return(a.workerName||"").localeCompare(b.workerName||"");
+      if(sortBy==="team")return(a.team||"").localeCompare(b.team||"")||(a.part||"").localeCompare(b.part||"");
+      if(sortBy==="part")return(a.part||"").localeCompare(b.part||"");
+      if(sortBy==="start")return(a.start_date||"9999").localeCompare(b.start_date||"9999");
+      if(sortBy==="end")return(a.end_date||"9999").localeCompare(b.end_date||"9999");
+      if(sortBy==="status"){const o={blocked:0,progress:1,waiting:2,done:3};return(o[a.status]??9)-(o[b.status]??9)}
+      return 0;
+    };
+    if(sortBy!=="default")filtered.sort(sortFn);
     const g={};filtered.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
     return g;
-  },[tasks,workers,contents,teamTab,partFilter,statusFilter,assigneeFilter]);
+  },[tasks,workers,contents,teamTab,partFilter,statusFilter,assigneeFilter,searchQ,sortBy]);
 
   // Initialize collapsed (all collapsed by default) and part order
   const partKeys=useMemo(()=>Object.keys(grouped),[grouped]);
@@ -617,7 +652,9 @@ function TaskSheet({tasks,workers,contents,versions}){
         <button className={"bt bt-s"+(teamTab==="all"?" on":"")} onClick={()=>setTT("all")}>전체</button>
         {teamKeys.map(t=><button key={t} className={"bt bt-s"+(teamTab===t?" on":"")} onClick={()=>setTT(t)}>{t}</button>)}
       </div>
-      <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+      <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="검색 (이름/콘텐츠/태스크)"
+          style={{fontSize:11,padding:"3px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit",width:150}}/>
         <select value={partFilter} onChange={e=>setPF(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
           <option value="all">파트 전체</option>
           {Object.keys(PART_LABELS).map(p=><option key={p} value={p}>{PART_LABELS[p]}</option>)}
@@ -629,6 +666,15 @@ function TaskSheet({tasks,workers,contents,versions}){
         <select value={assigneeFilter} onChange={e=>setAF(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
           <option value="all">담당자 전체</option>
           {assignees.map(a=><option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
+          <option value="default">기본 정렬</option>
+          <option value="team">팀별</option>
+          <option value="part">파트별</option>
+          <option value="worker">작업자별</option>
+          <option value="start">시작일순</option>
+          <option value="end">종료일순</option>
+          <option value="status">상태순</option>
         </select>
       </div>
     </div>
@@ -2064,6 +2110,9 @@ function App(){
   const[user,setUser]=useState(null);const[userModal,setUserModal]=useState(false);
   const[jumpId,setJumpId]=useState(null);
   const[importModal,setImportModal]=useState(false);
+  // Shared filters (persist across view switches, reset on page close)
+  const[filters,setFilters]=useState({});
+  const setFilter=(key,val)=>setFilters(p=>({...p,[key]:val}));
 
   // Resolve user from localStorage once workers loaded
   useEffect(()=>{if(wk.length===0)return;
@@ -2177,7 +2226,7 @@ function App(){
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct}/>}
-        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr}/>}
+        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
       </>}
