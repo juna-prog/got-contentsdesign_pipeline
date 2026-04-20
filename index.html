@@ -216,6 +216,7 @@ function GanttView({tasks,workers,milestones,parts,contents}){
   const[ganttScale,setGS]=useState(30);
   const[holFilter,setHolF]=useState({KR:true,US:false,JP:true,TW:false,HK:false,IN:false,TH:false});
   const[showHol,setShowHol]=useState(true);
+  const[showDone,setShowDone]=useState(false);
   const[workerPopup,setWP]=useState(null); // {worker, tasks, x, y}
   const chartRef=useRef(null);const ganttWrapRef=useRef(null);const namesRef=useRef(null);const ganttDrag=useRef(null);
   // Right-click drag scroll for gantt chart
@@ -297,15 +298,16 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     return g;
   },[workers,teamFilter,partFilter]);
 
-  // Map tasks to workers (including multi-assignees)
+  // Map tasks to workers (including multi-assignees), optionally filtering done
   const workerTasks=useMemo(()=>{
     const m={};const added=new Set();
-    (tasks||[]).forEach(t=>{
+    const filtered=(tasks||[]).filter(t=>showDone||t.status!=="done");
+    filtered.forEach(t=>{
       if(t.assignee_id){if(!m[t.assignee_id])m[t.assignee_id]=[];m[t.assignee_id].push(t);added.add(t.assignee_id+'::'+t.id)}
       if(t.task_assignees){for(const ta of t.task_assignees){const k=ta.worker_id+'::'+t.id;if(!added.has(k)){if(!m[ta.worker_id])m[ta.worker_id]=[];m[ta.worker_id].push({...t,_is_secondary:ta.worker_id!==t.assignee_id});added.add(k)}}}
     });
     return m;
-  },[tasks]);
+  },[tasks,showDone]);
 
   // Position calc - day based
   const dateToX=(date)=>{
@@ -368,6 +370,10 @@ function GanttView({tasks,workers,milestones,parts,contents}){
         <span style={{fontSize:11,color:"var(--t4)"}}>줌</span>
         <input type="range" min="30" max="50" step="0.1" value={ganttScale} onChange={e=>setGS(+e.target.value)} style={{width:80,accentColor:"var(--ac)"}}/>
         <span style={{fontSize:10,color:"var(--t4)",minWidth:28}}>{ganttScale.toFixed(1)}x</span>
+        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"var(--t3)",cursor:"pointer",marginLeft:8}}>
+          <input type="checkbox" checked={showDone} onChange={e=>setShowDone(e.target.checked)} style={{accentColor:"var(--gn)"}}/>
+          완료 일감 표시
+        </label>
         <div style={{display:"flex",gap:6,marginLeft:8,fontSize:11}}>
           <span><span className="dot" style={{background:BAR_C.progress,marginRight:3,verticalAlign:"middle"}}/>진행</span>
           <span><span className="dot" style={{background:BAR_C.waiting,marginRight:3,verticalAlign:"middle"}}/>대기</span>
