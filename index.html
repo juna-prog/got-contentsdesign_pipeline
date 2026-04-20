@@ -333,22 +333,22 @@ function GanttView({tasks,workers,milestones,parts,contents}){
 
   const toggleExpW=id=>setExpW(p=>({...p,[id]:!p[id]}));
 
-  // Build rows (with expanded worker sub-rows)
+  // Build rows (with expanded worker sub-rows) - each row gets a unique _key
   const rows=useMemo(()=>{
-    const r=[];
+    const r=[];let idx=0;
     Object.entries(groupedWorkers).forEach(([pid,wkrs])=>{
-      r.push({type:"header",pid,label:PART_LABELS[pid]||pid,count:wkrs.length});
+      r.push({type:"header",pid,label:PART_LABELS[pid]||pid,count:wkrs.length,_key:"h_"+pid});
       if(!collapsed[pid]){
         wkrs.forEach(w=>{
           const all=(workerTasks[w.id]||[]);
           const top=all.filter(t=>!t.parent_task_id);
           const childrenByParent={};all.forEach(t=>{if(t.parent_task_id){if(!childrenByParent[t.parent_task_id])childrenByParent[t.parent_task_id]=[];childrenByParent[t.parent_task_id].push(t)}});
-          r.push({type:"worker",worker:w,tasks:top,expanded:!!expandedW[w.id]});
+          r.push({type:"worker",worker:w,tasks:top,expanded:!!expandedW[w.id],_key:"w_"+pid+"_"+w.id});
           if(expandedW[w.id]){
             top.forEach(t=>{
               const kids=childrenByParent[t.id]||[];
-              r.push({type:"task",task:{...t,_child_count:kids.length},worker:w});
-              if(expandedT[t.id])kids.forEach(c=>r.push({type:"task",task:c,worker:w,_is_child:true}));
+              r.push({type:"task",task:{...t,_child_count:kids.length},worker:w,_key:"t_"+t.id});
+              if(expandedT[t.id])kids.forEach(c=>r.push({type:"task",task:c,worker:w,_is_child:true,_key:"tc_"+c.id}));
             });
           }
         });
@@ -356,14 +356,14 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     });
     // Backlog section
     if(showBacklog&&backlogTasks.length>0){
-      r.push({type:"header",pid:"_backlog",label:"\ubc31\ub85c\uadf8 (\uc77c\uc815 \ubbf8\uc9c0\uc815)",count:backlogTasks.length});
+      r.push({type:"header",pid:"_backlog",label:"\ubc31\ub85c\uadf8 (\uc77c\uc815 \ubbf8\uc9c0\uc815)",count:backlogTasks.length,_key:"h_backlog"});
       if(!collapsed["_backlog"]){
         const blByW={};backlogTasks.forEach(t=>{const wid=t.assignee_id||"_none";blByW[wid]=(blByW[wid]||[]).concat(t)});
         const wMapBL={};(workers||[]).forEach(w=>{wMapBL[w.id]=w});
         Object.entries(blByW).forEach(([wid,wTasks])=>{
           const w=wMapBL[wid]||{id:wid,name:"\ubbf8\ubc30\uc815",part_id:"other"};
-          r.push({type:"worker",worker:w,tasks:wTasks,expanded:!!expandedW["bl_"+wid]});
-          if(expandedW["bl_"+wid]) wTasks.forEach(t=>r.push({type:"task",task:t,worker:w}));
+          r.push({type:"worker",worker:w,tasks:wTasks,expanded:!!expandedW["bl_"+wid],_key:"bw_"+wid});
+          if(expandedW["bl_"+wid]) wTasks.forEach(t=>r.push({type:"task",task:t,worker:w,_key:"bt_"+t.id}));
         });
       }
     }
@@ -423,13 +423,13 @@ function GanttView({tasks,workers,milestones,parts,contents}){
       <div className="gantt-names" ref={namesRef}>
         <div style={{height:48,borderBottom:"1px solid var(--bd)",display:"flex",alignItems:"center",padding:"0 12px",fontSize:12,fontWeight:600,color:"var(--t3)",position:"sticky",top:0,background:"var(--bg)",zIndex:4}}>작업자</div>
         {rows.map((r,i)=>r.type==="header"?
-          <div key={"h"+r.pid} className="gantt-name part-header" onClick={()=>toggleCollapse(r.pid)}>
+          <div key={r._key} className="gantt-name part-header" onClick={()=>toggleCollapse(r.pid)}>
             <span style={{marginRight:6}}>{collapsed[r.pid]?"▶":"▼"}</span>{r.label} ({r.count})
           </div>:r.type==="task"?
-          <div key={"t"+r.task.id} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}}>
+          <div key={r._key} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}}>
             <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.task.title||r.task.task_name}</span>
           </div>:
-          <div key={"w"+r.worker.id} className="gantt-name" style={{cursor:"pointer",display:"flex",alignItems:"center",gap:2}} onClick={e=>{
+          <div key={r._key} className="gantt-name" style={{cursor:"pointer",display:"flex",alignItems:"center",gap:2}} onClick={e=>{
             if(e.target.closest('.exp-btn')){toggleExpW(r.worker.id);return}
             const rect=e.currentTarget.getBoundingClientRect();
             setWP({worker:r.worker,tasks:r.tasks,x:rect.right+8,y:rect.top})}}>
@@ -490,24 +490,24 @@ function GanttView({tasks,workers,milestones,parts,contents}){
 
           {/* Task bars */}
           {rows.map((r,ri)=>{
-            if(r.type==="header")return<div key={"hr"+ri} style={{height:rowH,background:"var(--bg3)",borderBottom:"1px solid var(--bd)"}}/>;
+            if(r.type==="header")return<div key={r._key+"_bar"} style={{height:rowH,background:"var(--bg3)",borderBottom:"1px solid var(--bd)"}}/>;
             if(r.type==="task"){
               const t=r.task;let x1=dateToX(t.start_date);let x2=dateToX(t.end_date);
               const isOngoing=t.start_date==null&&t.end_date==null;
               if(isOngoing){x1=todayX;x2=todayX+dayWidth*30}
               else if(x1===null&&x2!==null)x1=x2-dayWidth*7;
-              if(x1===null)return<div key={"tr"+ri} className="gantt-row"/>;
+              if(x1===null)return<div key={r._key+"_bar"} className="gantt-row"/>;
               if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;if(x2===null)x2=x1+dayWidth*7;
               const w=Math.max(20,x2-x1);const bc=BAR_C[t.status]||BAR_C.waiting;
               const isC=!!r._is_child;const kidCount=t._child_count||0;
-              return<div key={"tr"+ri} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
+              return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
                 {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
                 <div className="gantt-bar" style={{left:x1+(isC?16:0),top:6,width:w,background:bc,opacity:isC?.55:.85,border:isC?`1px dashed ${bc}`:undefined,height:isC?12:undefined}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})} onMouseLeave={()=>setTip(null)}>
                   {w>60?(isC?"└ ":"")+(t.title||t.task_name||""):""}</div>
               </div>
             }
-            return<div key={"wr"+ri} className="gantt-row" style={{position:"relative"}}>
+            return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative"}}>
               {r.tasks.map((t,ti)=>{
                 let x1=dateToX(t.start_date);
                 let x2=dateToX(t.end_date);
