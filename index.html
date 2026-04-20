@@ -493,13 +493,21 @@ function GanttView({tasks,workers,milestones,parts,contents}){
             if(r.type==="header")return<div key={r._key+"_bar"} style={{height:rowH,background:"var(--bg3)",borderBottom:"1px solid var(--bd)"}}/>;
             if(r.type==="task"){
               const t=r.task;let x1=dateToX(t.start_date);let x2=dateToX(t.end_date);
-              const isOngoing=t.start_date==null&&t.end_date==null;
-              if(isOngoing){x1=todayX;x2=todayX+dayWidth*30}
-              else if(x1===null&&x2!==null)x1=x2-dayWidth*7;
-              if(x1===null)return<div key={r._key+"_bar"} className="gantt-row"/>;
-              if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;if(x2===null)x2=x1+dayWidth*7;
-              const w=Math.max(20,x2-x1);const bc=BAR_C[t.status]||BAR_C.waiting;
+              const noDate=!t.start_date&&!t.end_date;
+              if(!noDate){
+                if(x1===null&&x2!==null)x1=x2-dayWidth*7;
+                if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;if(x2===null&&x1!==null)x2=x1+dayWidth*7;
+              }
+              const bc=BAR_C[t.status]||BAR_C.waiting;
               const isC=!!r._is_child;const kidCount=t._child_count||0;
+              // No date = backlog task: show inline label instead of bar
+              if(noDate||x1===null)return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
+                {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
+                <div style={{position:"sticky",left:8,display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",fontSize:10,color:"var(--t3)"}}>
+                  <span className="dot" style={{background:bc}}/>{isC?"└ ":""}{t.title||t.task_name||""}<span style={{color:"var(--t4)"}}>(일정 미정)</span>
+                </div>
+              </div>;
+              const w=Math.max(20,x2-x1);
               return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
                 {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
                 <div className="gantt-bar" style={{left:x1+(isC?16:0),top:6,width:w,background:bc,opacity:isC?.55:.85,border:isC?`1px dashed ${bc}`:undefined,height:isC?12:undefined}}
@@ -507,13 +515,19 @@ function GanttView({tasks,workers,milestones,parts,contents}){
                   {w>60?(isC?"└ ":"")+(t.title||t.task_name||""):""}</div>
               </div>
             }
+            // Worker row: render bars for dated tasks, inline labels for undated
             return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative"}}>
               {r.tasks.map((t,ti)=>{
                 let x1=dateToX(t.start_date);
                 let x2=dateToX(t.end_date);
-                const isOngoing=t.start_date==null&&t.end_date==null;
-                if(isOngoing){x1=todayX;x2=todayX+dayWidth*30}
-                else if(x1===null&&x2!==null)x1=x2-dayWidth*7;
+                const noDate=!t.start_date&&!t.end_date;
+                if(noDate){
+                  // Backlog: show inline label
+                  return<div key={t.id+(t._is_secondary?'-s':'')} style={{position:"sticky",left:8,display:"inline-flex",alignItems:"center",gap:4,padding:"6px 8px",fontSize:10,color:"var(--t3)"}}>
+                    <span className="dot" style={{background:BAR_C[t.status]||BAR_C.waiting}}/><span style={{maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title||t.task_name||""}</span>
+                  </div>
+                }
+                if(x1===null&&x2!==null)x1=x2-dayWidth*7;
                 if(x1===null)return null;
                 if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;
                 if(x2===null)x2=x1+dayWidth*7;
