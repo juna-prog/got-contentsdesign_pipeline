@@ -81,7 +81,7 @@ const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null)};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e})};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -206,7 +206,7 @@ TH:[{d:"2026-01-01",n:"New Year"},{d:"2026-02-17",n:"Makha Bucha"},{d:"2026-04-0
 const HOL_COLORS={KR:"#dc2626",US:"#2563eb",JP:"#db2777",TW:"#059669",HK:"#d97706",IN:"#7c3aed",TH:"#0284c7"};
 const HOL_LABELS={KR:"한국",US:"서양",JP:"일본",TW:"대만",HK:"홍콩",IN:"인도",TH:"태국"};
 
-function GanttView({tasks,workers,milestones,parts,contents}){
+function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViolations,onDepRefresh}){
   const[teamFilter,setTF]=useState("all");
   const[partFilter,setPF]=useState("all");
   const[collapsed,setCol]=useState({});
@@ -306,6 +306,16 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     return g;
   },[workers,teamFilter,partFilter]);
 
+  // ── DEPS DERIVED ──
+  const taskById=useMemo(()=>{const m={};(tasks||[]).forEach(t=>m[t.id]=t);return m},[tasks]);
+  const blockingByTask=useMemo(()=>{const m={};(dependencies||[]).forEach(d=>{
+    if(d.dep_type!=='finishes_before')return;
+    const pred=taskById[d.depends_on_task_id];
+    if(!pred||pred.status==='done')return;
+    (m[d.task_id]=m[d.task_id]||[]).push({pred_id:d.depends_on_task_id,pred_title:pred.title||'',pred_status:pred.status});
+  });return m},[dependencies,taskById]);
+  const violationByTask=useMemo(()=>{const m={};(depViolations||[]).forEach(v=>{(m[v.task_id]=m[v.task_id]||[]).push(v)});return m},[depViolations]);
+
   // Map tasks to workers (including multi-assignees), optionally filtering done
   // Split into scheduled vs backlog (no start AND no end date, and not ongoing)
   const{workerTasks,backlogTasks}=useMemo(()=>{
@@ -370,6 +380,34 @@ function GanttView({tasks,workers,milestones,parts,contents}){
     return r;
   },[groupedWorkers,collapsed,workerTasks,expandedW,expandedT,showBacklog,backlogTasks,workers]);
 
+  // Position lookup: task.id → {rowIndex, x1, x2, partId} for arrow drawing
+  const taskPositions=useMemo(()=>{
+    const pm={};
+    rows.forEach((r,ri)=>{
+      if(r.type==='task'){
+        const t=r.task;let x1=dateToX(t.start_date),x2=dateToX(t.end_date);
+        if(x1===null&&x2!==null)x1=x2-dayWidth*7;
+        if(x1===null)return;
+        if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;
+        if(x2===null)x2=x1+dayWidth*7;
+        const isC=!!r._is_child;const left=x1+(isC?16:0);
+        pm[t.id]={rowIndex:ri,x1:left,x2:Math.max(left+20,x2),partId:r.worker?.part_id};
+      }else if(r.type==='worker'){
+        r.tasks.forEach(t=>{
+          if(t._is_secondary)return;
+          if(pm[t.id])return;
+          let x1=dateToX(t.start_date),x2=dateToX(t.end_date);
+          if(x1===null&&x2!==null)x1=x2-dayWidth*7;
+          if(x1===null)return;
+          if(x2===null&&t.estimated_days)x2=x1+t.estimated_days*dayWidth;
+          if(x2===null)x2=x1+dayWidth*7;
+          pm[t.id]={rowIndex:ri,x1,x2:Math.max(x1+20,x2),partId:r.worker?.part_id};
+        });
+      }
+    });
+    return pm;
+  },[rows,ganttScale]);
+
   const toggleCollapse=(pid)=>setCol(p=>({...p,[pid]:!p[pid]}));
 
   const teams=[...new Set(Object.values(TEAM_MAP))];
@@ -426,18 +464,24 @@ function GanttView({tasks,workers,milestones,parts,contents}){
           <div key={r._key} className="gantt-name part-header" onClick={()=>toggleCollapse(r.pid)}>
             <span style={{marginRight:6}}>{collapsed[r.pid]?"▶":"▼"}</span>{r.label} ({r.count})
           </div>:r.type==="task"?
-          <div key={r._key} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}}>
-            <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.task.title||r.task.task_name}</span>
-          </div>:
-          <div key={r._key} className="gantt-name" style={{cursor:"pointer",display:"flex",alignItems:"center",gap:2}} onClick={e=>{
+          (()=>{const blk=blockingByTask[r.task.id];const vio=violationByTask[r.task.id];
+          return<div key={r._key} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}}>
+            <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{r.task.title||r.task.task_name}</span>
+            {blk&&<span title={"선행 미완료 "+blk.length+"건: "+blk.map(b=>b.pred_title).slice(0,3).join(', ')} style={{marginLeft:4,fontSize:10,color:"var(--rd)",fontWeight:700,flexShrink:0}}>⚠{blk.length}</span>}
+            {vio&&<span title={"날짜 위반 "+vio.length+"건 (선행 종료보다 시작이 빠름)"} style={{marginLeft:2,fontSize:10,flexShrink:0}}>📅</span>}
+          </div>})():
+          (()=>{const blkN=r.tasks.filter(t=>blockingByTask[t.id]).length;const vioN=r.tasks.filter(t=>violationByTask[t.id]).length;
+          return<div key={r._key} className="gantt-name" style={{cursor:"pointer",display:"flex",alignItems:"center",gap:2}} onClick={e=>{
             if(e.target.closest('.exp-btn')){toggleExpW(r.worker.id);return}
             const rect=e.currentTarget.getBoundingClientRect();
             setWP({worker:r.worker,tasks:r.tasks,x:rect.right+8,y:rect.top})}}>
             <span className="exp-btn" onClick={e=>{e.stopPropagation();toggleExpW(r.worker.id)}} style={{fontSize:9,color:"var(--t4)",cursor:"pointer",padding:"0 2px",flexShrink:0}}>{r.expanded?"▼":"▶"}</span>
             {(r.worker.is_part_lead||FORCED_LEADS[r.worker.part_id]===r.worker.name)&&<span style={{color:"var(--or)",flexShrink:0}}>★</span>}
             <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.worker.name}</span>
+            {blkN>0&&<span title={"블로킹 "+blkN+"건"} style={{fontSize:9,color:"var(--rd)",fontWeight:700,flexShrink:0}}>⚠{blkN}</span>}
+            {vioN>0&&<span title={"날짜 위반 "+vioN+"건"} style={{fontSize:9,flexShrink:0}}>📅{vioN}</span>}
             <span style={{fontSize:10,color:"var(--t4)",marginLeft:"auto",flexShrink:0}}>({r.tasks.length})</span>
-          </div>
+          </div>})()
         )}
       </div>
 
@@ -541,6 +585,30 @@ function GanttView({tasks,workers,milestones,parts,contents}){
               })}
             </div>
           })}
+
+          {/* Dependency arrows */}
+          {(dependencies||[]).length>0&&<svg style={{position:"absolute",left:0,top:0,width:totalWidth,height:rows.length*rowH,pointerEvents:"none",zIndex:4,overflow:"visible"}}>
+            <defs>
+              <marker id="arr-same" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
+              <marker id="arr-cross" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/></marker>
+              <marker id="arr-st" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0891b2"/></marker>
+            </defs>
+            {(dependencies||[]).map(d=>{
+              const src=taskPositions[d.depends_on_task_id];const tgt=taskPositions[d.task_id];
+              if(!src||!tgt)return null;
+              const isFB=d.dep_type==='finishes_before';
+              const cross=src.partId&&tgt.partId&&src.partId!==tgt.partId;
+              const color=cross?"#ea580c":(isFB?"#2563eb":"#0891b2");
+              const marker=cross?"arr-cross":(isFB?"arr-same":"arr-st");
+              const sx=isFB?src.x2:src.x1;
+              const sy=src.rowIndex*rowH+rowH/2;
+              const tx=tgt.x1;
+              const ty=tgt.rowIndex*rowH+rowH/2;
+              const midX=Math.max(sx+8,tx-8);
+              const path=`M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
+              return<path key={d.id} d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')}</title></path>
+            })}
+          </svg>}
         </div>
       </div>
     </div>
@@ -2248,6 +2316,7 @@ function ImportModal({user,workers,onClose,onDone}){
 function App(){
   const[view,setV]=useState("pipeline");
   const[ct,setCt]=useState([]);const[vr,setVr]=useState([]);const[ms,setMs]=useState([]);const[wk,setWk]=useState([]);const[allT,setAllT]=useState([]);
+  const[deps,setDeps]=useState([]);const[depV,setDepV]=useState([]);
   const[changes,setChanges]=useState([]);
   const[ld,setLd]=useState(true);const[err,setErr]=useState(null);const[fv,setFv]=useState("all");
   const[user,setUser]=useState(null);const[userModal,setUserModal]=useState(false);
@@ -2267,8 +2336,8 @@ function App(){
   },[wk]);
 
   const load=useCallback(async(silent)=>{if(!silent){setLd(true);setErr(null)}try{
-    const[v,c,m,w,t,ch]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[]),db.recentChanges()]);
-    setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);setChanges(ch||[]);if(!silent)setErr(null);
+    const[v,c,m,w,t,ch,dp,dv]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[]),db.recentChanges(),db.deps(),db.depViolations()]);
+    setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);setChanges(ch||[]);setDeps(dp||[]);setDepV(dv||[]);if(!silent)setErr(null);
   }catch(e){if(!silent)setErr(e.message)}if(!silent)setLd(false)},[]);
   useEffect(()=>{load()},[load]);
 
@@ -2368,7 +2437,7 @@ function App(){
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk}/>}
-        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct}/>}
+        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
