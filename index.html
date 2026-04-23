@@ -1158,7 +1158,129 @@ function SlotView({workers,tasks}){
 }
 
 /* ═══ PIPELINE (with split layout) ═══ */
-function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
+/* ═══ DEPENDENCY EDITOR ═══ */
+function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
+  const[selTaskId,setSelTaskId]=useState('');
+  const[depType,setDepType]=useState('finishes_before');
+  const[notes,setNotes]=useState('');
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState('');
+  const preds=useMemo(()=>(deps||[]).filter(d=>d.task_id===task.id),[deps,task.id]);
+  const succs=useMemo(()=>(deps||[]).filter(d=>d.depends_on_task_id===task.id),[deps,task.id]);
+  const taskMap=useMemo(()=>{const m={};(allTasks||[]).forEach(t=>m[t.id]=t);return m},[allTasks]);
+  const candidates=useMemo(()=>{
+    const existPred=new Set(preds.map(p=>p.depends_on_task_id));
+    return(allTasks||[]).filter(t=>t.id!==task.id&&!existPred.has(t.id))
+      .sort((a,b)=>{
+        const aSame=a.content_id===task.content_id?0:1;
+        const bSame=b.content_id===task.content_id?0:1;
+        if(aSame!==bSame)return aSame-bSame;
+        return(a.title||'').localeCompare(b.title||'');
+      });
+  },[allTasks,task,preds]);
+  const add=async()=>{
+    if(!selTaskId){setErr('선행 task 선택 필요');return}
+    setSaving(true);setErr('');
+    try{
+      await db.addDep({task_id:task.id,depends_on_task_id:+selTaskId,dep_type:depType,notes:notes||null,created_by:'manual'});
+      setSelTaskId('');setNotes('');onRefresh();
+    }catch(e){
+      const msg=e.message||'';
+      if(msg.includes('Circular'))setErr('순환 의존성 발생 - 이 task가 이미 후행 체인에 포함됨');
+      else if(msg.includes('uniq_dep'))setErr('이미 존재하는 의존성');
+      else if(msg.includes('no_self_dep'))setErr('자기 자신을 선행으로 지정 불가');
+      else setErr('오류: '+msg.slice(0,200));
+    }
+    setSaving(false);
+  };
+  const del=async(depId)=>{
+    if(!confirm('의존성을 삭제하시겠습니까?'))return;
+    try{await db.delDep(depId);onRefresh()}catch(e){alert('오류: '+e.message)}
+  };
+  const sameContentCands=candidates.filter(t=>t.content_id===task.content_id);
+  const otherCands=candidates.filter(t=>t.content_id!==task.content_id);
+  return<div className="modal-bg" onClick={onClose}>
+    <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:620}}>
+      <div className="modal-h">🔗 의존성 편집</div>
+      <div className="modal-b">
+        <div style={{fontSize:13,fontWeight:600,color:"var(--t1)",marginBottom:4}}>{task.title||task.task_name}</div>
+        <div style={{fontSize:11,color:"var(--t4)",marginBottom:12}}>
+          {task.contents?.name||''} · {task.action_verb?ACTION_VERBS[task.action_verb]:''} · {task.start_date||'?'} ~ {task.end_date||'?'}
+        </div>
+
+        {/* Current predecessors */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--t2)",marginBottom:6}}>선행 의존성 ({preds.length}건)</div>
+          {preds.length===0?
+            <div style={{fontSize:11,color:"var(--t4)",padding:"6px 0"}}>선행 의존성 없음</div>:
+            preds.map(p=>{const pred=taskMap[p.depends_on_task_id];if(!pred)return null;
+              const isFB=p.dep_type==='finishes_before';
+              return<div key={p.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,marginBottom:4,fontSize:12,background:"var(--bg2)"}}>
+                <span style={{fontSize:11,color:isFB?"#2563eb":"#0891b2",fontWeight:600,minWidth:110}} title={isFB?'선행 종료 후 시작':'동시 시작'}>
+                  {isFB?'▶ 종료 후 시작':'⇉ 동시 시작'}
+                </span>
+                <span style={{flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={pred.title}>
+                  <span style={{color:"var(--t4)",fontSize:10,marginRight:4}}>[{pred.contents?.name||'?'}]</span>
+                  {pred.title}
+                </span>
+                <D s={pred.status}/>
+                {p.notes&&<span style={{fontSize:10,color:"var(--t4)",fontStyle:"italic"}} title={p.notes}>📝</span>}
+                <button className="bt bt-s" onClick={()=>del(p.id)} style={{color:"var(--rd)",fontSize:10,padding:"2px 6px"}}>삭제</button>
+              </div>;
+            })
+          }
+        </div>
+
+        {/* Downstream (successors) - read only */}
+        {succs.length>0&&<div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--t2)",marginBottom:6}}>후행 (이 task에 의존 {succs.length}건)</div>
+          {succs.slice(0,5).map(s=>{const succ=taskMap[s.task_id];if(!succ)return null;
+            return<div key={s.id} style={{fontSize:11,color:"var(--t4)",padding:"2px 0"}}>
+              {s.dep_type==='finishes_before'?'▶':'⇉'} [{succ.contents?.name||'?'}] {succ.title}
+            </div>;
+          })}
+          {succs.length>5&&<div style={{fontSize:10,color:"var(--t4)",fontStyle:"italic"}}>...그 외 {succs.length-5}건</div>}
+        </div>}
+
+        {/* Add form */}
+        <div style={{border:"1px solid var(--bd)",borderRadius:6,padding:12,background:"var(--bg2)"}}>
+          <div style={{fontSize:12,fontWeight:700,marginBottom:8,color:"var(--t2)"}}>+ 선행 추가</div>
+          <select value={selTaskId} onChange={e=>setSelTaskId(e.target.value)} style={{width:"100%",fontSize:12,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit",marginBottom:8}}>
+            <option value="">-- 선행 task 선택 --</option>
+            {sameContentCands.length>0&&<optgroup label={"같은 콘텐츠 ("+sameContentCands.length+"건)"}>
+              {sameContentCands.map(t=><option key={t.id} value={t.id}>{t.action_verb?'['+ACTION_VERBS[t.action_verb]+'] ':''}{t.title}</option>)}
+            </optgroup>}
+            {otherCands.length>0&&<optgroup label={"다른 콘텐츠 ("+otherCands.length+"건, 최대 500)"}>
+              {otherCands.slice(0,500).map(t=><option key={t.id} value={t.id}>[{t.contents?.name||'?'}] {t.title}</option>)}
+            </optgroup>}
+          </select>
+          <div style={{display:"flex",gap:12,marginBottom:8,fontSize:12}}>
+            <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
+              <input type="radio" checked={depType==='finishes_before'} onChange={()=>setDepType('finishes_before')} style={{accentColor:"var(--ac)"}}/>
+              <span>종료 후 시작 <span style={{color:"var(--t4)",fontSize:10}}>(finishes_before, 실선)</span></span>
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
+              <input type="radio" checked={depType==='starts_together'} onChange={()=>setDepType('starts_together')} style={{accentColor:"var(--ac)"}}/>
+              <span>동시 시작 <span style={{color:"var(--t4)",fontSize:10}}>(starts_together, 점선)</span></span>
+            </label>
+          </div>
+          <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="메모 (선택) - 예: QA 대응은 폴리싱과 동시 진행"
+            style={{width:"100%",fontSize:11,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit",marginBottom:8,boxSizing:"border-box"}}/>
+          {err&&<div style={{fontSize:11,color:"var(--rd)",marginBottom:6,padding:"4px 8px",background:"var(--rd-bg)",borderRadius:3}}>{err}</div>}
+          <button className="bt bt-g" onClick={add} disabled={saving||!selTaskId} style={{width:"100%"}}>
+            {saving?'저장 중...':'의존성 추가'}
+          </button>
+        </div>
+      </div>
+      <div className="modal-f">
+        <button className="bt" onClick={onClose}>닫기</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
+  const[depEditTask,setDepEditTask]=useState(null);
   const ownerPartMap=useMemo(()=>{const m={};(wk||[]).forEach(w=>{m[w.name]={team:TEAM_MAP[w.part_id]||"",part:PART_LABELS[w.part_id]||""}});return m},[wk]);
   const[sel,setSel]=useState(null);
   const[tasks,setTasks]=useState([]);
@@ -1352,6 +1474,8 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
                 for(const c of children){ordered.push({task:c,indent:1});seen.add(c.id)}}
               for(const t of tasks){if(!seen.has(t.id))ordered.push({task:t,indent:t.parent_task_id?1:0})}
               return ordered.map(({task:t,indent})=>{const ok=canEditTaskStatus(t,user);const isSub=indent>0||t.issue_type==='Sub-Task'||t.parent_task_id;
+                const predCount=(deps||[]).filter(d=>d.task_id===t.id).length;
+                const blockCount=(deps||[]).filter(d=>{if(d.task_id!==t.id||d.dep_type!=='finishes_before')return false;const pr=(allT||[]).find(x=>x.id===d.depends_on_task_id);return pr&&pr.status!=='done'}).length;
                 return<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderBottom:"1px solid var(--bg3)",paddingLeft:indent*14,background:isSub?"var(--bg2)":undefined}}>
                   {isSub&&<span style={{color:"var(--t4)",fontSize:11,marginLeft:-8}}>└</span>}
                   <D s={t.status}/>
@@ -1365,6 +1489,11 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
                         style={{color:"var(--ac)",fontSize:9,textDecoration:"none"}} title={t.jira_url}>🎫{t.jira_url.split("/").pop()}</a>}
                     </div>
                   </div>
+                  <button onClick={()=>setDepEditTask(t)}
+                    title={predCount>0?"선행 "+predCount+"건"+(blockCount>0?" (블로킹 "+blockCount+")":"")+" 편집":"선행 의존성 추가"}
+                    style={{background:predCount>0?(blockCount>0?"var(--rd-bg)":"#e0e7ff"):"var(--bg2)",color:predCount>0?(blockCount>0?"var(--rd)":"#4338ca"):"var(--t4)",border:"1px solid "+(predCount>0?(blockCount>0?"var(--rd)":"#c7d2fe"):"var(--bd)"),borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 5px",fontWeight:600,whiteSpace:"nowrap"}}>
+                    🔗{predCount>0?predCount:""}{blockCount>0?"⚠":""}
+                  </button>
                   <select disabled={!ok} value={t.action_verb||''} onChange={e=>chgTaskVerb(t.id,e.target.value)}
                     title={ok?"일감 성격 (action_verb)":"본인 태스크만 변경 가능"}
                     style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:78}}>
@@ -1399,6 +1528,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
       onSave={reasonReq.onConfirm} onClose={()=>setReasonReq(null)}/>}
     {jiraModal&&sel&&<JiraPreviewModal content={sel} tasks={tasks} versions={vr} workers={wk} user={user}
       onClose={()=>setJiraModal(false)} onRefresh={()=>{db.tasks(sel.id).then(setTasks);onRefresh(true)}}/>}
+    {depEditTask&&<DependencyEditor task={depEditTask} deps={deps} allTasks={allT} onClose={()=>setDepEditTask(null)} onRefresh={()=>{onDepRefresh&&onDepRefresh()}}/>}
   </div>
 }
 
@@ -2435,7 +2565,7 @@ function App(){
     <div className="pn">
       {ld?<div style={{textAlign:"center",padding:60,fontSize:15,color:"var(--t3)"}}>데이터를 불러오는 중...</div>:
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
-        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load}/>}
+        {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load} deps={deps} allT={allT} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter}/>}
