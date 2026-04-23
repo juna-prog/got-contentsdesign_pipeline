@@ -1889,6 +1889,8 @@ function splitTitle(title,verb){if(!title)return{title_object:null,action_verb:v
 /* `[label] object` 포맷으로 재조합. object 없으면 label만 */
 function composeTitle(titleObject,verb){const label=verb?ACTION_VERBS[verb]:null;if(!label)return titleObject||'';if(!titleObject)return `[${label}]`;return `[${label}] ${titleObject}`}
 function parseRegionChapter(raw){if(!raw)return null;const s=String(raw).trim();if(!s||s==='-')return null;const m=s.match(/^(\d+\.\d+)\.?\s*(.*)$/);if(m)return m[1];const r=s.match(/^(\d+\.\d+)\s*-\s*\d+\.\d+$/);if(r)return r[1];/* 범위 표기(3.0-3.3)는 시작값만 */return null/* 비매칭("WL 3 / 4" 등)은 null */}
+/* xlsx 챕터 컬럼이 비어있어도 콘텐츠명/태스크명에서 "챕터4.2" 또는 "4.2" 패턴을 찾아 추출 */
+function extractRegionFromText(text){if(!text)return null;const m=String(text).match(/(?:챕터\s*)?(\d+\.\d+)/);return m?m[1]:null}
 function parseIssueType(raw){if(!raw)return null;const s=String(raw).trim();if(s==='Task'||s==='태스크')return 'Task';if(s==='Sub-Task'||s==='서브태스크'||s==='Sub-task')return 'Sub-Task';return null}
 function parsePriority(raw){if(!raw)return null;const n=parseInt(String(raw).trim(),10);return Number.isFinite(n)&&n>=1?n:null}
 const INDENT_PREFIXES=['└','↳','ㄴ'];
@@ -1963,7 +1965,9 @@ function buildContentsAndTasks(rows,ci,partId){
     taskCounter[baseTaskKey]=(taskCounter[baseTaskKey]||0)+1;
     const taskSrcKey=taskCounter[baseTaskKey]>1?`${baseTaskKey}::${taskCounter[baseTaskKey]}`:baseTaskKey;
     const regionRaw=get('지역/챕터')||get('지역')||get('챕터');
-    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:parseRegionChapter(regionRaw),issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
+    /* 컬럼 우선 → 콘텐츠명 fallback → 태스크명 fallback (xlsx 일관성 없을 때 대응) */
+    const regionCode=parseRegionChapter(regionRaw)||extractRegionFromText(curContent.name)||extractRegionFromText(taskTitle);
+    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:regionCode,issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
