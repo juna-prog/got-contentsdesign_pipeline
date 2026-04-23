@@ -1159,6 +1159,14 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
     if(!canEditTaskStatus(t,user)){alert("본인 태스크만 변경 가능");return}
     await db.updTask(tid,{status:st});setTasks(await db.tasks(sel.id));onRefresh(true);
   };
+  const chgTaskVerb=async(tid,verb)=>{
+    const v=verb||null;const t=tasks.find(x=>x.id===tid);if(!t)return;
+    // title에서 모든 verb label 제거 -> 순수 object 추출 -> [label] object 재조합
+    const titleObject=t.title_object&&t.title_object.trim()?t.title_object.trim():stripAllVerbLabels(t.title||'')||null;
+    const newTitle=composeTitle(titleObject,v);
+    await db.updTask(tid,{action_verb:v,title_object:titleObject,title:newTitle});
+    setTasks(await db.tasks(sel.id));onRefresh(true);
+  };
   const fwdGate=()=>{
     if(!sel||!user)return;const gi=GATES.findIndex(g=>g.id===sel.gate);if(gi>=GATES.length-1)return;
     const nx=GATES[gi+1].id;
@@ -1207,7 +1215,6 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
                 <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
                   <span style={{fontSize:13}}>{tm.i}</span>
                   {v&&<B ch={v.label} c="b-p"/>}
-                  {c.target_build&&<B ch={c.target_build} c="b-a"/>}
                   {c.locked&&<span title="잠금" style={{fontSize:11}}>🔒</span>}
                   {AC[c.alert]&&<B ch={AL[c.alert]} c={AC[c.alert]}/>}
                   {gLen>1&&editable&&<span style={{marginLeft:"auto",display:"flex",gap:1}}>
@@ -1242,7 +1249,6 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
           </div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
             {v&&<B ch={v.label+" · "+v.target_date} c="b-p"/>}
-            {sel.target_build&&<B ch={"빌드 "+sel.target_build} c="b-a"/>}
             {AC[sel.alert]&&<B ch={AL[sel.alert]} c={AC[sel.alert]}/>}
             <B ch={"P"+sel.priority} c="b-x"/>
           </div>
@@ -1269,27 +1275,45 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
           </div>
 
           {detailTab==="tasks"&&(tasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>등록된 태스크 없음</div>:
-            tasks.map(t=>{const ok=canEditTaskStatus(t,user);
-              return<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderBottom:"1px solid var(--bg3)"}}>
-                <D s={t.status}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title||t.task_name}</div>
-                  <div style={{fontSize:10,color:"var(--t4)",display:"flex",alignItems:"center",gap:4}}>
-                    {t.part_id} · {t.estimated_days||t.days||"?"}일
-                    {t.jira_url&&<a href={t.jira_url} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}
-                      style={{color:"var(--ac)",fontSize:9,textDecoration:"none"}} title={t.jira_url}>🎫{t.jira_url.split("/").pop()}</a>}
+            (()=>{
+              /* Task(parent_task_id=null)을 먼저, 그 아래 Sub-Task indent. orphan sub-task는 flat으로 끝에 */
+              const ordered=[];const seen=new Set();
+              for(const t of tasks){if(t.parent_task_id||seen.has(t.id))continue;
+                ordered.push({task:t,indent:0});seen.add(t.id);
+                const children=tasks.filter(c=>c.parent_task_id===t.id);
+                for(const c of children){ordered.push({task:c,indent:1});seen.add(c.id)}}
+              for(const t of tasks){if(!seen.has(t.id))ordered.push({task:t,indent:t.parent_task_id?1:0})}
+              return ordered.map(({task:t,indent})=>{const ok=canEditTaskStatus(t,user);const isSub=indent>0||t.issue_type==='Sub-Task'||t.parent_task_id;
+                return<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderBottom:"1px solid var(--bg3)",paddingLeft:indent*14,background:isSub?"var(--bg2)":undefined}}>
+                  {isSub&&<span style={{color:"var(--t4)",fontSize:11,marginLeft:-8}}>└</span>}
+                  <D s={t.status}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title||t.task_name}</div>
+                    <div style={{fontSize:10,color:"var(--t4)",display:"flex",alignItems:"center",gap:4}}>
+                      {t.part_id} · {t.estimated_days||t.days||"?"}일
+                      {t.issue_type&&<span style={{padding:"1px 4px",background:isSub?"#fef3c7":"var(--bg3)",color:isSub?"#92400e":"var(--t3)",borderRadius:2,fontSize:9,fontWeight:isSub?600:400}}>{t.issue_type}</span>}
+                      {t.action_verb&&<span style={{padding:"1px 4px",background:"#e0e7ff",color:"#4338ca",borderRadius:2,fontSize:9,fontWeight:600}}>{ACTION_VERBS[t.action_verb]||t.action_verb}</span>}
+                      {t.jira_url&&<a href={t.jira_url} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}
+                        style={{color:"var(--ac)",fontSize:9,textDecoration:"none"}} title={t.jira_url}>🎫{t.jira_url.split("/").pop()}</a>}
+                    </div>
                   </div>
-                </div>
-                <select disabled={!ok} value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)}
-                  title={ok?"":"본인 태스크만 변경 가능"}
-                  style={{fontSize:11,padding:"2px 4px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5}}>
-                  <option value="waiting">대기</option><option value="progress">진행</option><option value="done">완료</option><option value="blocked">차단</option></select>
-              </div>}))}
+                  <select disabled={!ok} value={t.action_verb||''} onChange={e=>chgTaskVerb(t.id,e.target.value)}
+                    title={ok?"일감 성격 (action_verb)":"본인 태스크만 변경 가능"}
+                    style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:78}}>
+                    <option value="">미지정</option>
+                    {ACTION_VERB_ORDER.map(k=><option key={k} value={k}>{ACTION_VERBS[k]}</option>)}
+                  </select>
+                  <select disabled={!ok} value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)}
+                    title={ok?"":"본인 태스크만 변경 가능"}
+                    style={{fontSize:11,padding:"2px 4px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5}}>
+                    <option value="waiting">대기</option><option value="progress">진행</option><option value="done">완료</option><option value="blocked">차단</option></select>
+                </div>})
+            })())}
 
           {detailTab==="history"&&(history.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>변경 이력 없음</div>:
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {history.map((h,i)=>{const d=new Date(h.created_at);const dt=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
-                const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",target_build:"타겟 빌드",gate:"게이트",locked:"잠금"};
+                const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",gate:"게이트",locked:"잠금"};
                 return<div key={h.id||i} style={{padding:"8px 10px",border:"1px solid var(--bd)",borderRadius:6,background:"var(--bg)",fontSize:12}}>
                   <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
                     <span style={{color:"var(--t4)",fontSize:11}}>{dt}</span>
@@ -1312,7 +1336,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh}){
 
 /* ═══ ADD FORM ═══ */
 function AddForm({vr,onDone}){
-  const[f,setF]=useState({name:"",type:"field",gate:"G0",version_id:"launch",owner:"",priority:2,doc_status:"개발 전",alert:"none",target_build:""});
+  const[f,setF]=useState({name:"",type:"field",gate:"G0",version_id:"launch",owner:"",priority:2,doc_status:"개발 전",alert:"none"});
   const[msg,setMsg]=useState("");const[sv,setSv]=useState(false);
   const go=async()=>{if(!f.name.trim()){setMsg("콘텐츠명 입력");return}setSv(true);setMsg("");try{await db.addContent(f);setMsg("등록 완료!");setF({...f,name:"",owner:""});onDone()}catch(e){setMsg("오류: "+e.message)}setSv(false)};
   return<div style={{padding:20}}><div style={{fontSize:17,fontWeight:700,marginBottom:14}}>새 콘텐츠 등록</div>
@@ -1322,7 +1346,6 @@ function AddForm({vr,onDone}){
       <div><label>유형</label><select value={f.type} onChange={e=>setF({...f,type:e.target.value})}>{Object.entries(TM).map(([k,v])=><option key={k} value={k}>{v.i} {v.l}</option>)}</select></div>
       <div><label>Gate</label><select value={f.gate} onChange={e=>setF({...f,gate:e.target.value})}>{GATES.map(g=><option key={g.id} value={g.id}>{g.l} {g.s}</option>)}</select></div>
       <div><label>목표 버전</label><select value={f.version_id} onChange={e=>setF({...f,version_id:e.target.value})}>{(vr||[]).map(v=><option key={v.id} value={v.id}>{v.label} ({v.target_date})</option>)}</select></div>
-      <div><label>타겟 빌드</label><input value={f.target_build} onChange={e=>setF({...f,target_build:e.target.value})} placeholder="예: 런칭 / 시즌1"/></div>
       <div><label>우선순위</label><select value={f.priority} onChange={e=>setF({...f,priority:+e.target.value})}><option value={1}>1 - 최우선</option><option value={2}>2 - 높음</option><option value={3}>3 - 보통</option></select></div>
     </div>
     <div className="fa"><button className="bt bt-g" onClick={go} disabled={sv}>{sv?"저장 중...":"등록하기"}</button>{msg&&<span style={{fontSize:13,color:msg.includes("오류")?"var(--rd)":"var(--gn)"}}>{msg}</span>}</div></div>
@@ -1815,7 +1838,7 @@ function NoticeBar({changes,user,onJump}){
     return(changes||[]).filter(c=>new Date(c.created_at).getTime()>cutoff&&!dismissed.includes(c.id))},[changes,dismissed]);
   if(recent.length===0)return null;
   const visible=expanded?recent:recent.slice(0,2);
-  const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",target_build:"타겟 빌드",gate:"게이트",locked:"잠금"};
+  const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",gate:"게이트",locked:"잠금"};
   const fmt=(c)=>{const d=new Date(c.created_at);const md=(d.getMonth()+1)+"-"+String(d.getDate()).padStart(2,"0");
     const cn=c.contents?.name||"(콘텐츠)";const own=c.contents?.owner||"";
     const isMine=user&&(own===user.name||c.changed_by===user.name);
@@ -1844,14 +1867,37 @@ function normalizeGate(raw){if(!raw)return null;const desc=String(raw).split(':'
 const STATUS_MAP={'시작 전':'waiting','진행 중':'progress','완료됨':'done','완료':'done','보류':'blocked','차단':'blocked','중단':'blocked'};
 function normalizeStatus(raw){if(!raw)return 'waiting';return STATUS_MAP[String(raw).trim()]||'waiting'}
 function normalizeDate(raw){if(!raw)return null;const s=String(raw).trim();const m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);if(!m)return null;return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`}
-const RELATED_PART_MAP={'전투':'combat','전투 파트':'combat','전투파트':'combat','레벨':'level','레벨 파트':'level','필드':'field','필드 파트':'field','퀘스트':'quest','퀘스트(내러티브)':'quest','퀘스트(내러티브) 파트':'quest','아트':'art','UX':'ux','클래스':'class','클래스 파트':'class'};
-function normalizeRelatedPart(raw){if(!raw)return null;return RELATED_PART_MAP[String(raw).trim()]||null}
+const RELATED_PART_MAP={'전투':'combat','전투 파트':'combat','전투파트':'combat','레벨':'level','레벨 파트':'level','필드':'field','필드 파트':'field','퀘스트':'quest','퀘스트(내러티브)':'quest','퀘스트(내러티브) 파트':'quest','아트':'art','아트 파트':'art','UX':'ux','UX 파트':'ux','클래스':'class','클래스 파트':'class','내러티브':'narrative','내러티브 파트':'narrative','검증':'validation','검증 파트':'validation','밸런스':'validation','시스템':'validation'};
+function normalizeRelatedPart(raw){if(!raw)return null;const s=String(raw).trim();if(!s)return null;if(/[\/,]/.test(s)){const parts=s.split(/\s*[\/,]\s*/).map(x=>RELATED_PART_MAP[x.trim()]||x.trim()).filter(Boolean);return parts.join(', ')}return RELATED_PART_MAP[s]||null}
+/* v1.1 action_verb 역추론 (v12_data_normalize.sql 패턴 미러) */
+const ACTION_VERBS={draft_doc:'구현 기획서 작성',implement:'구현',data_entry:'데이터 작업',resource_request:'리소스 요청',polish:'폴리싱',qa_response:'QA 대응',fun_review:'재미검증',ip_review:'IP 검수 대응'};
+const ACTION_VERB_ORDER=['draft_doc','implement','data_entry','resource_request','polish','qa_response','fun_review','ip_review'];
+function inferActionVerb(title){if(!title)return null;const t=String(title);const m=(p)=>t.match(new RegExp(p,'i'));
+  if(m('IP\\s*검수|IP홀더'))return 'ip_review';
+  if(m('재미\\s*검증'))return 'fun_review';
+  if(m('리소스\\s*(요청|교체|정리)'))return 'resource_request';
+  if(m('QA\\s*대응|QA\\s*피드백|QA'))return 'qa_response';
+  if(m('폴리싱'))return 'polish';
+  if(m('데이터\\s*작업|데이터\\s*작성|초벌\\s*데이터|로\\s*등록|더미\\s*리소스로'))return 'data_entry';
+  if(m('기획서|검토|문서\\s*(작성|수정|정리|화)|문서화'))return 'draft_doc';
+  if(m('구현|제작|설정|배치|목업|추가\\s*작업|\\s작업$|작업$'))return 'implement';
+  return null}
+function escRe(s){return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
+/* title에서 모든 action_verb label을 prefix/suffix 위치에서 제거하여 순수 object만 추출 */
+function stripAllVerbLabels(title){if(!title)return '';let s=String(title).trim();for(const k of ACTION_VERB_ORDER){const lbl=escRe(ACTION_VERBS[k]);s=s.replace(new RegExp('^\\s*\\['+lbl+'\\]\\s*',''),'').replace(new RegExp('\\s*[-\\s]\\s*'+lbl+'\\s*$',''),'').replace(new RegExp('\\s+'+lbl+'\\s*$',''),'')}return s.trim()}
+function splitTitle(title,verb){if(!title)return{title_object:null,action_verb:verb||null};const obj=stripAllVerbLabels(title);return{title_object:obj||null,action_verb:verb||null}}
+/* `[label] object` 포맷으로 재조합. object 없으면 label만 */
+function composeTitle(titleObject,verb){const label=verb?ACTION_VERBS[verb]:null;if(!label)return titleObject||'';if(!titleObject)return `[${label}]`;return `[${label}] ${titleObject}`}
+function parseRegionChapter(raw){if(!raw)return null;const s=String(raw).trim();if(!s||s==='-')return null;const m=s.match(/^(\d+\.\d+)\.?\s*(.*)$/);if(m)return m[1];return s}
+function parseIssueType(raw){if(!raw)return null;const s=String(raw).trim();if(s==='Task'||s==='태스크')return 'Task';if(s==='Sub-Task'||s==='서브태스크'||s==='Sub-task')return 'Sub-Task';return null}
+function parsePriority(raw){if(!raw)return null;const n=parseInt(String(raw).trim(),10);return Number.isFinite(n)&&n>=1?n:null}
 const INDENT_PREFIXES=['└','↳','ㄴ'];
 function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'');for(const p of INDENT_PREFIXES)if(s.startsWith(p)){s=s.slice(p.length).trim();break}s=s.replace(/^-\s+/,'');return s}
 function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;const tr=s.trimStart();for(const p of INDENT_PREFIXES)if(tr.startsWith(p))return true;if(/^-\s+/.test(tr))return true;return false}
 function normalizeJiraKey(raw){if(!raw)return null;const m=String(raw).trim().match(/([A-Z]+-\d+)/);return m?m[1]:null}
-const HEADER_KEYS=['콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','작업 일수','기획서','지라 일감','부모 지라','비고'];
-const INHERIT_KEYS=['콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
+/* v1.1: 20열 표준. 기존 14열 + 신규 6열(목표/지역/챕터/이슈 타입/우선순위 + alias). xlsx에 없는 컬럼은 indexOf=-1로 자동 무시 */
+const HEADER_KEYS=['목표','지역/챕터','이슈 타입','콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','시작','작업 완료 일정','종료','작업 일수','일수','기획서','지라 일감','지라','부모 지라','우선순위','비고'];
+const INHERIT_KEYS=['목표','지역/챕터','콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
 function findHeaderRow(rows){for(let i=0;i<Math.min(5,rows.length);i++){const r=rows[i].map(c=>String(c||'').trim());if(r.includes('콘텐츠명')&&r.includes('게이트'))return i}return -1}
 function parseSheet(file,partId){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=(e)=>{try{
   const wb=XLSX.read(e.target.result,{type:'array'});
@@ -1863,7 +1909,10 @@ function parseSheet(file,partId){return new Promise((resolve,reject)=>{const rea
   resolve(buildContentsAndTasks(dataRows,colIdx,partId));
 }catch(err){reject(err)}};reader.onerror=reject;reader.readAsArrayBuffer(file)})}
 function stripBracketSuffix(s){return s.replace(/\s*\[.*?\]\s*$/,'').trim()}
-function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s=>stripBracketSuffix(s.trim())).filter(Boolean)}
+/* 미배정 placeholder 토큰 (실제 사람이 아니므로 assignee로 인식 금지) */
+const UNASSIGNED_TOKENS=['미배정','미정','없음','TBD','TBA','-','?','(미배정)','담당자 미배정'];
+function isUnassignedToken(s){if(!s)return true;const t=String(s).trim();if(!t)return true;for(const tk of UNASSIGNED_TOKENS){if(t===tk||t.includes(tk))return true}return false}
+function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s=>stripBracketSuffix(s.trim())).filter(s=>s&&!isUnassignedToken(s))}
 function buildContentsAndTasks(rows,ci,partId){
   const contents=[],tasks=[];let curContent=null,curParentTask=null;
   const nameCounter={};
@@ -1885,8 +1934,12 @@ function buildContentsAndTasks(rows,ci,partId){
     const taskTitle=stripIndent(rawTitle);if(!taskTitle)continue;
     const assigneeRaw=get('담당자')||curContent.owner;
     const assigneeNames=parseAssigneeNames(assigneeRaw);
-    const jiraRaw=rawGet('지라 일감');const parentJiraRaw=rawGet('부모 지라');
-    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(get('작업 시작 일정'))||curContent.start_date,end_date:normalizeDate(get('작업 완료 일정'))||curContent.end_date,days:parseInt(rawGet('작업 일수'),10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
+    const jiraRaw=rawGet('지라 일감')||rawGet('지라');const parentJiraRaw=rawGet('부모 지라');
+    const verb=inferActionVerb(taskTitle);const ts=splitTitle(taskTitle,verb);
+    const issueRaw=rawGet('이슈 타입');const issueType=parseIssueType(issueRaw)||(isChild?'Sub-Task':'Task');
+    const startRaw=get('작업 시작 일정')||get('시작');const endRaw=get('작업 완료 일정')||get('종료');
+    const daysRaw=rawGet('작업 일수')||rawGet('일수');
+    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:parseRegionChapter(get('지역/챕터')),issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
@@ -1973,13 +2026,13 @@ function parseArtSheet(file){return new Promise((resolve,reject)=>{const reader=
 
 // 파트별 기본 type (기존 contents.type enum과의 호환)
 const PART_DEFAULT_TYPE={combat:"system",level:"system",field:"field",quest:"season_quest"};
-function buildContentPayload(c,targetBuild,now){
-  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,target_build:targetBuild,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
+function buildContentPayload(c,now){
+  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
 }
 function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
   const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
   const w=workerByName.get(t.assignee_name);
-  return{content_id:cid,title:t.title,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days:t.days,jira_url:t.jira_url,notes:t.notes,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
+  return{content_id:cid,title:t.title,title_object:t.title_object||null,action_verb:t.action_verb||null,region_chapter:t.region_chapter||null,issue_type:t.issue_type||null,priority:t.priority||null,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days:t.days,jira_url:t.jira_url,notes:t.notes,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
 }
 
 function ImportModal({user,workers,onClose,onDone}){
@@ -1987,7 +2040,6 @@ function ImportModal({user,workers,onClose,onDone}){
   const allowedParts=user.is_team_lead?PARTS:PARTS.filter(p=>p.id===user.part_id);
   const[partId,setPartId]=useState(allowedParts[0]?.id||'combat');
   const[file,setFile]=useState(null);
-  const[targetBuild,setTargetBuild]=useState('아시아 빌드');
   const[parsed,setParsed]=useState(null);
   const[diff,setDiff]=useState(null);
   const[running,setRunning]=useState(false);
@@ -2014,7 +2066,15 @@ function ImportModal({user,workers,onClose,onDone}){
       const unknown=new Set();
       for(const t of p.tasks){for(const n of(t._assignee_names||[])){if(n&&!workerNames.has(n))unknown.add(n)}}
       const unknownGate=p.contents.filter(c=>!c.gate).map(c=>c.name);
-      setDiff({cAdd,cUpd,cLocked,tAdd,tUpd,unknownWorkers:[...unknown],unknownGate});
+      /* 미배정 task -> 파트장 fallback 예상 건수 (실 import 시 적용) */
+      const partLeadByPartPv={};
+      for(const w of(workers||[])){if(w.is_part_lead&&w.part_id&&!partLeadByPartPv[w.part_id])partLeadByPartPv[w.part_id]=w}
+      const leadFallbackPreview=p.tasks.filter(t=>{
+        if(t._assignee_names&&t._assignee_names.length>0)return false;
+        const pid=t._content_source_key?String(t._content_source_key).split('::')[0]:null;
+        return pid&&partLeadByPartPv[pid];
+      }).length;
+      setDiff({cAdd,cUpd,cLocked,tAdd,tUpd,unknownWorkers:[...unknown],unknownGate,leadFallback:leadFallbackPreview,leadFallbackName:partLeadByPartPv[partId]?.name||null});
     }catch(e){setError(e.message)}
   };
 
@@ -2024,18 +2084,29 @@ function ImportModal({user,workers,onClose,onDone}){
     setRunning(true);setError(null);
     try{
       const workerByName=new Map((workers||[]).map(w=>[w.name,w]));
+      /* 미배정 fallback: 파트별 파트장 매핑 (workers.is_part_lead=true) */
+      const partLeadByPart={};
+      for(const w of(workers||[])){if(w.is_part_lead&&w.part_id&&!partLeadByPart[w.part_id])partLeadByPart[w.part_id]=w}
+      /* 미배정 task에 파트장 자동 할당 */
+      let leadFallbackCount=0;
+      for(const t of[...(diff.tAdd||[]),...(diff.tUpd||[])]){
+        if(t._assignee_names&&t._assignee_names.length>0)continue;
+        const pid=t._content_source_key?String(t._content_source_key).split('::')[0]:null;
+        const lead=pid?partLeadByPart[pid]:null;
+        if(lead){t.assignee_name=lead.name;t._assignee_names=[lead.name];leadFallbackCount++}
+      }
+      if(leadFallbackCount>0)console.log(`[import] 미배정 ${leadFallbackCount}건 -> 파트장 자동 할당`);
       const now=new Date().toISOString();
       // 1. 신규 콘텐츠
       const insertedC=[];
-      const effectiveTargetBuild=isArt?null:targetBuild;
       if(diff.cAdd.length>0){
-        const payload=diff.cAdd.map(c=>buildContentPayload(c,effectiveTargetBuild,now));
+        const payload=diff.cAdd.map(c=>buildContentPayload(c,now));
         const res=await db.bulkContents(payload);
         insertedC.push(...(res||[]));
       }
       // 2. 갱신 콘텐츠
       for(const c of diff.cUpd){
-        const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,target_build:effectiveTargetBuild,imported_at:now};
+        const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,imported_at:now};
         await db.updContent(c._id,upd);
         await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
       }
@@ -2102,11 +2173,6 @@ function ImportModal({user,workers,onClose,onDone}){
               {allowedParts.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>
-          {!isArt&&<div style={{marginBottom:10}}>
-            <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>목표 빌드</label>
-            <input value={targetBuild} onChange={e=>setTargetBuild(e.target.value)}
-              style={{display:"block",width:"100%",padding:8,marginTop:4,border:"1px solid var(--bd)",borderRadius:6}}/>
-          </div>}
           <div style={{marginBottom:10}}>
             <label style={{fontSize:12,color:"var(--t3)",fontWeight:600}}>xlsx 파일</label>
             <input type="file" accept=".xlsx" onChange={e=>handleFile(e.target.files[0])}
@@ -2119,6 +2185,7 @@ function ImportModal({user,workers,onClose,onDone}){
             {isArt&&parsed.contents.length>0&&<div style={{marginTop:6,fontSize:11,color:"var(--t3)"}}>{(()=>{const pc={};parsed.contents.forEach(c=>{const l=PART_LABELS[c.part_id]||c.part_id;pc[l]=(pc[l]||0)+1});return Object.entries(pc).map(([k,v])=>`${k} ${v}건`).join(', ')})()}</div>}
             {diff.unknownWorkers.length>0&&<div style={{marginTop:8,color:"var(--rd)"}}>⚠ 미인식 담당자 {diff.unknownWorkers.length}명: {diff.unknownWorkers.slice(0,5).join(", ")}{diff.unknownWorkers.length>5?'...':''}</div>}
             {!isArt&&diff.unknownGate.length>0&&<div style={{marginTop:4,color:"var(--or)"}}>⚠ 미인식 게이트 {diff.unknownGate.length}건: 기본 G0 적용</div>}
+            {diff.leadFallback>0&&<div style={{marginTop:4,color:"var(--ac)"}}>👤 미배정 {diff.leadFallback}건 → 파트장 자동 할당{diff.leadFallbackName?` (${diff.leadFallbackName})`:''}</div>}
           </div>}
           {error&&<div style={{marginTop:10,padding:10,background:"var(--rd-bg)",color:"var(--rd)",borderRadius:6,fontSize:12}}>{error}</div>}
         </>}
