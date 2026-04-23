@@ -1896,8 +1896,25 @@ function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'
 function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;const tr=s.trimStart();for(const p of INDENT_PREFIXES)if(tr.startsWith(p))return true;if(/^-\s+/.test(tr))return true;return false}
 function normalizeJiraKey(raw){if(!raw)return null;const m=String(raw).trim().match(/([A-Z]+-\d+)/);return m?m[1]:null}
 /* v1.1: 20열 표준. 기존 14열 + 신규 6열(목표/지역/챕터/이슈 타입/우선순위 + alias). xlsx에 없는 컬럼은 indexOf=-1로 자동 무시 */
-const HEADER_KEYS=['목표','지역/챕터','이슈 타입','콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','시작','작업 완료 일정','종료','작업 일수','일수','기획서','지라 일감','지라','부모 지라','우선순위','비고'];
-const INHERIT_KEYS=['목표','지역/챕터','콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
+const HEADER_KEYS=['목표','목표 빌드','지역/챕터','이슈 타입','콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','시작','작업 완료 일정','종료','작업 일수','일수','기획서','지라 일감','지라','부모 지라','우선순위','비고'];
+const INHERIT_KEYS=['목표','목표 빌드','지역/챕터','콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
+/* v1.1 version_id 매핑: 한글 표기 → versions.id 코드 (CBT/launch/UP01/S01~S10/미정) */
+const VERSION_MAP={
+  '론칭':'launch','런칭':'launch','Launch':'launch','launch':'launch',
+  '1차':'UP01','1차 업데이트':'UP01','1차 업뎃':'UP01','1차업데이트':'UP01','UP01':'UP01','up01':'UP01',
+  'CBT':'CBT','cbt':'CBT','Cbt':'CBT',
+  '미정':'미정','-':'미정'
+};
+(function(){for(let n=1;n<=10;n++){const code=`S${String(n).padStart(2,'0')}`;VERSION_MAP[`시즌${n}`]=code;VERSION_MAP[`시즌 ${n}`]=code;VERSION_MAP[code]=code;VERSION_MAP[`S${n}`]=code;VERSION_MAP[`s${n}`]=code}})();
+function normalizeVersion(raw){
+  if(raw===null||raw===undefined)return '미정';
+  const s=String(raw).trim();
+  if(!s)return '미정';
+  if(VERSION_MAP[s])return VERSION_MAP[s];
+  const m=s.match(/^시즌\s*(\d{1,2})$/);
+  if(m){const n=parseInt(m[1]);if(n>=1&&n<=10)return `S${String(n).padStart(2,'0')}`}
+  return '미정';
+}
 function findHeaderRow(rows){for(let i=0;i<Math.min(5,rows.length);i++){const r=rows[i].map(c=>String(c||'').trim());if(r.includes('콘텐츠명')&&r.includes('게이트'))return i}return -1}
 function parseSheet(file,partId){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=(e)=>{try{
   const wb=XLSX.read(e.target.result,{type:'array'});
@@ -1928,7 +1945,8 @@ function buildContentsAndTasks(rows,ci,partId){
       const suffix=nameCounter[contentName]>1?`::${nameCounter[contentName]}`:'';
       const srcKey=`${partId}::${contentName}${suffix}`;
       const ownerRaw=get('담당자')||null;
-      curContent={source_key:srcKey,name:contentName,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:ownerRaw,_owner_names:parseAssigneeNames(ownerRaw),start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
+      const versionId=normalizeVersion(get('목표')||get('목표 빌드'));
+      curContent={source_key:srcKey,name:contentName,version_id:versionId,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:ownerRaw,_owner_names:parseAssigneeNames(ownerRaw),start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
       contents.push(curContent);curParentTask=null;
     }
     if(!curContent)continue;
@@ -2031,7 +2049,7 @@ function parseArtSheet(file){return new Promise((resolve,reject)=>{const reader=
 // 파트별 기본 type (기존 contents.type enum과의 호환)
 const PART_DEFAULT_TYPE={combat:"system",level:"system",field:"field",quest:"season_quest"};
 function buildContentPayload(c,now){
-  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:'launch',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
+  return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:c.version_id||'미정',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
 }
 function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
   const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
@@ -2111,6 +2129,7 @@ function ImportModal({user,workers,onClose,onDone}){
       // 2. 갱신 콘텐츠
       for(const c of diff.cUpd){
         const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,imported_at:now};
+        if(c.version_id)upd.version_id=c.version_id;  /* xlsx에 목표 값 있으면 반영, 없으면 기존 값 유지 */
         await db.updContent(c._id,upd);
         await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
       }
