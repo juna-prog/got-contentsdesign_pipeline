@@ -1889,8 +1889,17 @@ function splitTitle(title,verb){if(!title)return{title_object:null,action_verb:v
 /* `[label] object` 포맷으로 재조합. object 없으면 label만 */
 function composeTitle(titleObject,verb){const label=verb?ACTION_VERBS[verb]:null;if(!label)return titleObject||'';if(!titleObject)return `[${label}]`;return `[${label}] ${titleObject}`}
 function parseRegionChapter(raw){if(!raw)return null;const s=String(raw).trim();if(!s||s==='-')return null;const m=s.match(/^(\d+\.\d+)\.?\s*(.*)$/);if(m)return m[1];const r=s.match(/^(\d+\.\d+)\s*-\s*\d+\.\d+$/);if(r)return r[1];/* 범위 표기(3.0-3.3)는 시작값만 */return null/* 비매칭("WL 3 / 4" 등)은 null */}
-/* xlsx 챕터 컬럼이 비어있어도 콘텐츠명/태스크명에서 "챕터4.2" 또는 "4.2" 패턴을 찾아 추출 */
-function extractRegionFromText(text){if(!text)return null;const m=String(text).match(/(?:챕터\s*)?(\d+\.\d+)/);return m?m[1]:null}
+/* xlsx 챕터 컬럼이 비어있어도 콘텐츠명/태스크명에서 "챕터4.2" 또는 "4.2" 패턴을 찾아 추출
+   "챕터5"처럼 location 번호 없이 챕터만 있으면 X.0으로 (캐슬블랙 등 챕터 대표 지역) */
+function extractRegionFromText(text){
+  if(!text)return null;
+  const s=String(text);
+  const m1=s.match(/(?:챕터\s*)?(\d+\.\d+)/);
+  if(m1)return m1[1];
+  const m2=s.match(/챕터\s*(\d+)\b/);
+  if(m2)return `${m2[1]}.0`;
+  return null;
+}
 function parseIssueType(raw){if(!raw)return null;const s=String(raw).trim();if(s==='Task'||s==='태스크')return 'Task';if(s==='Sub-Task'||s==='서브태스크'||s==='Sub-task')return 'Sub-Task';return null}
 function parsePriority(raw){if(!raw)return null;const n=parseInt(String(raw).trim(),10);return Number.isFinite(n)&&n>=1?n:null}
 const INDENT_PREFIXES=['└','↳','ㄴ'];
