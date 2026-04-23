@@ -1170,25 +1170,47 @@ function SlotView({workers,tasks}){
 
 /* ═══ PIPELINE (with split layout) ═══ */
 /* ═══ DEPENDENCY EDITOR ═══ */
+function tokenize(s){if(!s)return[];const str=String(s).toLowerCase();const toks=[];let buf='';for(const ch of str){if(/[\p{L}\p{N}]/u.test(ch))buf+=ch;else{if(buf.length>=2)toks.push(buf);buf=''}}if(buf.length>=2)toks.push(buf);return toks}
+const STOPWORDS=new Set(['task','sub','작업','기획','제작','구현','설정','방향','작업','관리','대응','진행','문서','문서화','리스트','업무','관련','데이터','추가','변경','수정','확인','체크','기본','일반']);
 function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
   const[selTaskId,setSelTaskId]=useState('');
   const[depType,setDepType]=useState('finishes_before');
   const[notes,setNotes]=useState('');
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState('');
+  const[searchQ,setSearchQ]=useState('');
+  const[showAll,setShowAll]=useState(false);
   const preds=useMemo(()=>(deps||[]).filter(d=>d.task_id===task.id),[deps,task.id]);
   const succs=useMemo(()=>(deps||[]).filter(d=>d.depends_on_task_id===task.id),[deps,task.id]);
   const taskMap=useMemo(()=>{const m={};(allTasks||[]).forEach(t=>m[t.id]=t);return m},[allTasks]);
+  const targetTokens=useMemo(()=>{
+    const t1=tokenize(task?.title_object||task?.title||'');
+    const t2=tokenize(task?.contents?.name||'');
+    return[...new Set([...t1,...t2])].filter(x=>!STOPWORDS.has(x));
+  },[task]);
+  const targetPartPrefix=useMemo(()=>{const sk=task?.source_key||'';return sk.includes('::')?sk.split('::')[0]:null},[task]);
+  const scoreCandidate=(t)=>{
+    let sc=0;
+    if(t.content_id===task.content_id)sc+=100;
+    if(t.action_verb&&t.action_verb===task.action_verb)sc+=30;
+    const candPrefix=(t.source_key||'').split('::')[0];
+    if(targetPartPrefix&&candPrefix===targetPartPrefix)sc+=5;
+    const candToks=new Set([...tokenize(t.title_object||t.title||''),...tokenize(t.contents?.name||'')]);
+    for(const tk of targetTokens)if(candToks.has(tk))sc+=10;
+    return sc;
+  };
   const candidates=useMemo(()=>{
     const existPred=new Set(preds.map(p=>p.depends_on_task_id));
-    return(allTasks||[]).filter(t=>t.id!==task.id&&!existPred.has(t.id))
-      .sort((a,b)=>{
-        const aSame=a.content_id===task.content_id?0:1;
-        const bSame=b.content_id===task.content_id?0:1;
-        if(aSame!==bSame)return aSame-bSame;
-        return(a.title||'').localeCompare(b.title||'');
-      });
-  },[allTasks,task,preds]);
+    const q=(searchQ||'').toLowerCase().trim();
+    const scored=(allTasks||[]).filter(t=>t.id!==task.id&&!existPred.has(t.id))
+      .map(t=>({t,score:scoreCandidate(t)}));
+    const filtered=q?scored.filter(({t})=>{
+      const hay=((t.title||'')+' '+(t.title_object||'')+' '+(t.contents?.name||'')+' '+(t.contents?.category||'')).toLowerCase();
+      return hay.includes(q);
+    }):scored;
+    filtered.sort((a,b)=>b.score-a.score||(a.t.title||'').localeCompare(b.t.title||''));
+    return filtered;
+  },[allTasks,task,preds,searchQ,targetTokens]);
   const add=async()=>{
     if(!selTaskId){setErr('선행 task 선택 필요');return}
     setSaving(true);setErr('');
@@ -1208,8 +1230,8 @@ function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
     if(!confirm('의존성을 삭제하시겠습니까?'))return;
     try{await db.delDep(depId);onRefresh()}catch(e){alert('오류: '+e.message)}
   };
-  const sameContentCands=candidates.filter(t=>t.content_id===task.content_id);
-  const otherCands=candidates.filter(t=>t.content_id!==task.content_id);
+  const selTask=selTaskId?taskMap[+selTaskId]:null;
+  const visibleCands=showAll?candidates:candidates.slice(0,20);
   return<div className="modal-bg" onClick={onClose}>
     <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:620}}>
       <div className="modal-h">🔗 의존성 편집</div>
@@ -1255,16 +1277,40 @@ function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
 
         {/* Add form */}
         <div style={{border:"1px solid var(--bd)",borderRadius:6,padding:12,background:"var(--bg2)"}}>
-          <div style={{fontSize:12,fontWeight:700,marginBottom:8,color:"var(--t2)"}}>+ 선행 추가</div>
-          <select value={selTaskId} onChange={e=>setSelTaskId(e.target.value)} style={{width:"100%",fontSize:12,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit",marginBottom:8}}>
-            <option value="">-- 선행 task 선택 --</option>
-            {sameContentCands.length>0&&<optgroup label={"같은 콘텐츠 ("+sameContentCands.length+"건)"}>
-              {sameContentCands.map(t=><option key={t.id} value={t.id}>{t.action_verb?'['+ACTION_VERBS[t.action_verb]+'] ':''}{t.title}</option>)}
-            </optgroup>}
-            {otherCands.length>0&&<optgroup label={"다른 콘텐츠 ("+otherCands.length+"건, 최대 500)"}>
-              {otherCands.slice(0,500).map(t=><option key={t.id} value={t.id}>[{t.contents?.name||'?'}] {t.title}</option>)}
-            </optgroup>}
-          </select>
+          <div style={{fontSize:12,fontWeight:700,marginBottom:6,color:"var(--t2)"}}>+ 선행 추가</div>
+          <input type="text" value={searchQ} onChange={e=>{setSearchQ(e.target.value);setShowAll(false)}} placeholder="검색 (task 제목 / 콘텐츠명 / 분류)"
+            style={{width:"100%",fontSize:12,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit",marginBottom:6,boxSizing:"border-box"}}/>
+          <div style={{fontSize:10,color:"var(--t4)",marginBottom:6}}>
+            추천 순서: 같은 콘텐츠 → 같은 일감 성격 → 같은 파트 → 제목 키워드 매칭. 클릭해서 선택.
+          </div>
+          {selTask&&<div style={{padding:"6px 8px",background:"var(--ac)",color:"#fff",borderRadius:4,marginBottom:6,fontSize:12,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:11}}>✓ 선택됨:</span>
+            <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{formatTaskDisplay(selTask,selTask.contents,{withName:true})}</span>
+            <button onClick={()=>setSelTaskId('')} style={{background:"rgba(255,255,255,.3)",color:"#fff",border:"none",borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 6px"}}>해제</button>
+          </div>}
+          <div style={{maxHeight:180,overflowY:"auto",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",marginBottom:8}}>
+            {candidates.length===0?
+              <div style={{fontSize:11,color:"var(--t4)",padding:12,textAlign:"center"}}>{searchQ?'검색 결과 없음':'후보 task 없음'}</div>:
+              visibleCands.map(({t,score})=>{
+                const isSel=+selTaskId===t.id;
+                const isSameC=t.content_id===task.content_id;
+                const isSameV=t.action_verb&&t.action_verb===task.action_verb;
+                return<div key={t.id} onClick={()=>setSelTaskId(String(t.id))} style={{padding:"5px 8px",cursor:"pointer",borderBottom:"1px solid var(--bg3)",background:isSel?"var(--ac)":"transparent",color:isSel?"#fff":"var(--t2)",display:"flex",alignItems:"center",gap:6,fontSize:11}}>
+                  <D s={t.status}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{formatTaskDisplay(t,t.contents,{withName:!isSameC})}</div>
+                    <div style={{fontSize:9,color:isSel?"rgba(255,255,255,.8)":"var(--t4)",display:"flex",gap:4,alignItems:"center"}}>
+                      {isSameC&&<span style={{color:isSel?"#fff":"#2563eb",fontWeight:600}}>동일 콘텐츠</span>}
+                      {isSameV&&<span style={{color:isSel?"#fff":"#4338ca",fontWeight:600}}>{ACTION_VERBS[t.action_verb]}</span>}
+                      {t.start_date&&<span>{t.start_date}~{t.end_date||'?'}</span>}
+                    </div>
+                  </div>
+                  <span style={{fontSize:9,color:isSel?"rgba(255,255,255,.7)":"var(--t4)",flexShrink:0}}>{score}</span>
+                </div>;
+              })
+            }
+            {!showAll&&candidates.length>20&&<div onClick={()=>setShowAll(true)} style={{padding:"6px 8px",textAlign:"center",fontSize:11,color:"var(--ac)",cursor:"pointer",borderTop:"1px solid var(--bg3)",fontWeight:600}}>+ {candidates.length-20}건 더 보기</div>}
+          </div>
           <div style={{display:"flex",gap:12,marginBottom:8,fontSize:12}}>
             <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
               <input type="radio" checked={depType==='finishes_before'} onChange={()=>setDepType('finishes_before')} style={{accentColor:"var(--ac)"}}/>
@@ -1386,6 +1432,31 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
       }
     });
   };
+  const autoLinkSubtasks=async()=>{
+    if(!sel||!tasks||tasks.length===0)return;
+    const groups={};
+    for(const t of tasks){if(!t.parent_task_id)continue;(groups[t.parent_task_id]=groups[t.parent_task_id]||[]).push(t)}
+    const sortFn=(a,b)=>{
+      const sa=a.sort_order??9999,sb=b.sort_order??9999;if(sa!==sb)return sa-sb;
+      const da=a.start_date||'9999',db=b.start_date||'9999';if(da!==db)return da.localeCompare(db);
+      return(a.id||0)-(b.id||0);
+    };
+    const planned=[];
+    for(const pid of Object.keys(groups)){const sorted=[...groups[pid]].sort(sortFn);for(let i=1;i<sorted.length;i++)planned.push({pred:sorted[i-1],succ:sorted[i]})}
+    if(planned.length===0){alert('자동 연결 대상 없음 (Sub-Task 그룹에 2개 이상이 필요)');return}
+    const existKey=new Set((deps||[]).filter(d=>d.dep_type==='finishes_before').map(d=>d.task_id+'::'+d.depends_on_task_id));
+    const newPairs=planned.filter(p=>!existKey.has(p.succ.id+'::'+p.pred.id));
+    if(newPairs.length===0){alert('모든 연속 쌍이 이미 연결됨');return}
+    const preview=newPairs.slice(0,3).map(p=>`  ${p.pred.title} → ${p.succ.title}`).join('\n');
+    if(!confirm(`${newPairs.length}건의 Sub-Task 순차 의존성(finishes_before)을 생성합니다.\n\n예시:\n${preview}${newPairs.length>3?`\n  ...외 ${newPairs.length-3}건`:''}\n\n진행하시겠습니까?`))return;
+    let ok=0,fail=0;const errs=[];
+    for(const p of newPairs){
+      try{await db.addDep({task_id:p.succ.id,depends_on_task_id:p.pred.id,dep_type:'finishes_before',notes:null,created_by:'auto_subtask_link'});ok++}
+      catch(e){fail++;if(errs.length<3)errs.push((e.message||'').slice(0,80))}
+    }
+    alert(`생성 완료: ${ok}건${fail>0?`, 실패 ${fail}건${errs.length?'\n'+errs.join('\n'):''}`:''}`);
+    onDepRefresh&&onDepRefresh();
+  };
   const unlockContent=()=>{
     if(!sel||!user||!user.is_team_lead)return;
     setReasonReq({
@@ -1474,6 +1545,20 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
             <button className={detailTab==="tasks"?"on":""} onClick={()=>setDetailTab("tasks")}>태스크 ({tasks.length})</button>
             <button className={detailTab==="history"?"on":""} onClick={()=>setDetailTab("history")}>이력 ({history.length})</button>
           </div>
+
+          {/* Auto-link Sub-Task button */}
+          {detailTab==="tasks"&&tasks.some(t=>t.parent_task_id)&&(()=>{
+            const groups={};for(const t of tasks){if(!t.parent_task_id)continue;(groups[t.parent_task_id]=groups[t.parent_task_id]||[]).push(t)}
+            const planned=Object.values(groups).reduce((s,arr)=>s+Math.max(0,arr.length-1),0);
+            const existKey=new Set((deps||[]).filter(d=>d.dep_type==='finishes_before').map(d=>d.task_id+'::'+d.depends_on_task_id));
+            const sortFn=(a,b)=>{const sa=a.sort_order??9999,sb=b.sort_order??9999;if(sa!==sb)return sa-sb;const da=a.start_date||'9999',db=b.start_date||'9999';if(da!==db)return da.localeCompare(db);return(a.id||0)-(b.id||0)};
+            let newCount=0;for(const arr of Object.values(groups)){const s=[...arr].sort(sortFn);for(let i=1;i<s.length;i++)if(!existKey.has(s[i].id+'::'+s[i-1].id))newCount++}
+            return<button onClick={autoLinkSubtasks} disabled={newCount===0}
+              title={newCount===0?'모든 연속 쌍이 이미 연결됨':`${newCount}건의 finishes_before 의존성 생성`}
+              style={{width:"100%",padding:"8px 12px",marginTop:8,marginBottom:4,background:newCount>0?"#e0e7ff":"var(--bg2)",color:newCount>0?"#4338ca":"var(--t4)",border:"1px solid "+(newCount>0?"#c7d2fe":"var(--bd)"),borderRadius:6,fontSize:12,fontWeight:600,cursor:newCount>0?"pointer":"not-allowed"}}>
+              🔗 Sub-Task 순차 자동 연결 {newCount>0?`(${newCount}건 생성 예정)`:'(추가 없음)'}
+            </button>
+          })()}
 
           {detailTab==="tasks"&&(tasks.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:8}}>등록된 태스크 없음</div>:
             (()=>{
