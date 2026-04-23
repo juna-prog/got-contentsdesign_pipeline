@@ -1888,7 +1888,7 @@ function stripAllVerbLabels(title){if(!title)return '';let s=String(title).trim(
 function splitTitle(title,verb){if(!title)return{title_object:null,action_verb:verb||null};const obj=stripAllVerbLabels(title);return{title_object:obj||null,action_verb:verb||null}}
 /* `[label] object` 포맷으로 재조합. object 없으면 label만 */
 function composeTitle(titleObject,verb){const label=verb?ACTION_VERBS[verb]:null;if(!label)return titleObject||'';if(!titleObject)return `[${label}]`;return `[${label}] ${titleObject}`}
-function parseRegionChapter(raw){if(!raw)return null;const s=String(raw).trim();if(!s||s==='-')return null;const m=s.match(/^(\d+\.\d+)\.?\s*(.*)$/);if(m)return m[1];return s}
+function parseRegionChapter(raw){if(!raw)return null;const s=String(raw).trim();if(!s||s==='-')return null;const m=s.match(/^(\d+\.\d+)\.?\s*(.*)$/);if(m)return m[1];const r=s.match(/^(\d+\.\d+)\s*-\s*\d+\.\d+$/);if(r)return r[1];/* 범위 표기(3.0-3.3)는 시작값만 */return null/* 비매칭("WL 3 / 4" 등)은 null */}
 function parseIssueType(raw){if(!raw)return null;const s=String(raw).trim();if(s==='Task'||s==='태스크')return 'Task';if(s==='Sub-Task'||s==='서브태스크'||s==='Sub-task')return 'Sub-Task';return null}
 function parsePriority(raw){if(!raw)return null;const n=parseInt(String(raw).trim(),10);return Number.isFinite(n)&&n>=1?n:null}
 const INDENT_PREFIXES=['└','↳','ㄴ'];
@@ -1896,8 +1896,9 @@ function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'
 function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;const tr=s.trimStart();for(const p of INDENT_PREFIXES)if(tr.startsWith(p))return true;if(/^-\s+/.test(tr))return true;return false}
 function normalizeJiraKey(raw){if(!raw)return null;const m=String(raw).trim().match(/([A-Z]+-\d+)/);return m?m[1]:null}
 /* v1.1: 20열 표준. 기존 14열 + 신규 6열(목표/지역/챕터/이슈 타입/우선순위 + alias). xlsx에 없는 컬럼은 indexOf=-1로 자동 무시 */
-const HEADER_KEYS=['목표','목표 빌드','지역/챕터','이슈 타입','콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','시작','작업 완료 일정','종료','작업 일수','일수','기획서','지라 일감','지라','부모 지라','우선순위','비고'];
-const INHERIT_KEYS=['목표','목표 빌드','지역/챕터','콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
+/* 컬럼명 파트별 실측: 전투=챕터 / 필드,퀘스트=지역 / 레벨=없음 -> alias 모두 수용 */
+const HEADER_KEYS=['목표','목표 빌드','지역/챕터','지역','챕터','이슈 타입','콘텐츠명','게이트','분류','세부 내용','담당자','유관파트','상태','작업 시작 일정','시작','작업 완료 일정','종료','작업 일수','일수','기획서','지라 일감','지라','부모 지라','우선순위','비고'];
+const INHERIT_KEYS=['목표','목표 빌드','지역/챕터','지역','챕터','콘텐츠명','게이트','분류','담당자','유관파트','상태','작업 시작 일정','작업 완료 일정','기획서'];
 /* v1.1 version_id 매핑: 한글 표기 → versions.id 코드 (CBT/launch/UP01/S01~S10/미정) */
 const VERSION_MAP={
   '론칭':'launch','런칭':'launch','Launch':'launch','launch':'launch',
@@ -1961,7 +1962,8 @@ function buildContentsAndTasks(rows,ci,partId){
     const baseTaskKey=`${curContent.source_key}::${taskTitle}`;
     taskCounter[baseTaskKey]=(taskCounter[baseTaskKey]||0)+1;
     const taskSrcKey=taskCounter[baseTaskKey]>1?`${baseTaskKey}::${taskCounter[baseTaskKey]}`:baseTaskKey;
-    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:parseRegionChapter(get('지역/챕터')),issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
+    const regionRaw=get('지역/챕터')||get('지역')||get('챕터');
+    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:parseRegionChapter(regionRaw),issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
