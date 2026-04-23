@@ -1916,6 +1916,7 @@ function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s
 function buildContentsAndTasks(rows,ci,partId){
   const contents=[],tasks=[];let curContent=null,curParentTask=null;
   const nameCounter={};
+  const taskCounter={};  /* source_key 기준 task 중복 카운트 - 같은 (content,title) 여러 row일 때 ::N 부여 */
   const lastVals={};
   for(const r of rows){
     const rawGet=(k)=>ci[k]>=0?String(r[ci[k]]||'').trim():'';
@@ -1939,7 +1940,10 @@ function buildContentsAndTasks(rows,ci,partId){
     const issueRaw=rawGet('이슈 타입');const issueType=parseIssueType(issueRaw)||(isChild?'Sub-Task':'Task');
     const startRaw=get('작업 시작 일정')||get('시작');const endRaw=get('작업 완료 일정')||get('종료');
     const daysRaw=rawGet('작업 일수')||rawGet('일수');
-    const task={source_key:`${curContent.source_key}::${taskTitle}`,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:parseRegionChapter(get('지역/챕터')),issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
+    const baseTaskKey=`${curContent.source_key}::${taskTitle}`;
+    taskCounter[baseTaskKey]=(taskCounter[baseTaskKey]||0)+1;
+    const taskSrcKey=taskCounter[baseTaskKey]>1?`${baseTaskKey}::${taskCounter[baseTaskKey]}`:baseTaskKey;
+    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:parseRegionChapter(get('지역/챕터')),issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
