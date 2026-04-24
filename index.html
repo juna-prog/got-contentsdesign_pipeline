@@ -216,9 +216,10 @@ TH:[{d:"2026-01-01",n:"New Year"},{d:"2026-02-17",n:"Makha Bucha"},{d:"2026-04-0
 const HOL_COLORS={KR:"#dc2626",US:"#2563eb",JP:"#db2777",TW:"#059669",HK:"#d97706",IN:"#7c3aed",TH:"#0284c7"};
 const HOL_LABELS={KR:"한국",US:"서양",JP:"일본",TW:"대만",HK:"홍콩",IN:"인도",TH:"태국"};
 
-function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViolations,onDepRefresh}){
+function GanttView({tasks,workers,milestones,parts,contents,versions,dependencies,depViolations,onDepRefresh}){
   const[teamFilter,setTF]=useState("all");
   const[partFilter,setPF]=useState("all");
+  const[verFilter,setVerF]=useState("all");
   const[collapsed,setCol]=useState({});
   const[expandedW,setExpW]=useState({}); // worker id -> show individual task rows
   const[expandedT,setExpT]=useState({}); // task id -> show sub-tasks
@@ -330,7 +331,12 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
   // Split into scheduled vs backlog (no start AND no end date, and not ongoing)
   const{workerTasks,backlogTasks}=useMemo(()=>{
     const m={};const bl=[];const added=new Set();
-    const filtered=(tasks||[]).filter(t=>showDone||t.status!=="done");
+    const effVer=t=>t.version_id||(t.contents&&t.contents.version_id)||null;
+    const filtered=(tasks||[]).filter(t=>showDone||t.status!=="done").filter(t=>{
+      if(verFilter==="all")return true;
+      if(verFilter==="unassigned")return !effVer(t);
+      return effVer(t)===verFilter;
+    });
     filtered.forEach(t=>{
       const hasDate=t.start_date||t.end_date;
       if(!hasDate){bl.push(t);return}
@@ -338,7 +344,7 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
       if(t.task_assignees){for(const ta of t.task_assignees){const k=ta.worker_id+'::'+t.id;if(!added.has(k)){if(!m[ta.worker_id])m[ta.worker_id]=[];m[ta.worker_id].push({...t,_is_secondary:ta.worker_id!==t.assignee_id});added.add(k)}}}
     });
     return{workerTasks:m,backlogTasks:bl};
-  },[tasks,showDone]);
+  },[tasks,showDone,verFilter]);
   const[showBacklog,setShowBacklog]=useState(false);
 
   // Position calc - day based
@@ -437,6 +443,12 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
         <select value={partFilter} onChange={e=>setPF(e.target.value)} style={{fontSize:12,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:5,background:"var(--bg)",fontFamily:"inherit"}}>
           <option value="all">전체</option>
           {Object.keys(PART_LABELS).map(p=><option key={p} value={p}>{PART_LABELS[p]}</option>)}
+        </select>
+        <span style={{fontSize:12,color:"var(--t3)"}}>버전:</span>
+        <select value={verFilter} onChange={e=>setVerF(e.target.value)} title="task.version_id 기준 필터" style={{fontSize:12,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:5,background:"var(--bg)",fontFamily:"inherit"}}>
+          <option value="all">전체</option>
+          <option value="unassigned">미배정</option>
+          {(versions||[]).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
       </div>
       <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
@@ -563,11 +575,14 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
                 </div>
               </div>;
               const w=Math.max(20,x2-x1);
+              const tverId=t.version_id||(t.contents&&t.contents.version_id);
+              const tver=(versions||[]).find(vv=>vv.id===tverId);
               return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
                 {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
                 <div className="gantt-bar" style={{left:x1+(isC?16:0),top:6,width:w,background:bc,opacity:isC?.55:.85,border:isC?`1px dashed ${bc}`:undefined,height:isC?12:undefined}}
                   onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})} onMouseLeave={()=>setTip(null)}>
                   {w>60?(isC?"└ ":"")+formatTaskDisplay(t,t.contents):""}</div>
+                {tver&&w>30&&<span style={{position:"absolute",left:x1+w+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
               </div>
             }
             // Worker row: render bars for dated tasks, inline labels for undated
@@ -588,11 +603,16 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
                 if(x2===null)x2=x1+dayWidth*7;
                 const w=Math.max(20,x2-x1);
                 const bc=BAR_C[t.status]||BAR_C.waiting;
-                return<div key={t.id+(t._is_secondary?'-s':'')} className="gantt-bar"
-                  style={{left:x1,top:6,width:w,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:t._is_secondary?`1px dashed ${bc}`:undefined,opacity:t._is_secondary?.65:undefined}}
-                  onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})}
-                  onMouseLeave={()=>setTip(null)}>
-                  {w>60?formatTaskDisplay(t,t.contents):""}</div>
+                const tverId=t.version_id||(t.contents&&t.contents.version_id);
+                const tver=(versions||[]).find(vv=>vv.id===tverId);
+                return<React.Fragment key={t.id+(t._is_secondary?'-s':'')}>
+                  <div className="gantt-bar"
+                    style={{left:x1,top:6,width:w,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:t._is_secondary?`1px dashed ${bc}`:undefined,opacity:t._is_secondary?.65:undefined}}
+                    onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})}
+                    onMouseLeave={()=>setTip(null)}>
+                    {w>60?formatTaskDisplay(t,t.contents):""}</div>
+                  {tver&&w>30&&!t._is_secondary&&<span style={{position:"absolute",left:x1+w+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
+                </React.Fragment>
               })}
             </div>
           })}
@@ -662,13 +682,18 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
 }
 
 /* ═══ TASK SHEET ═══ */
-function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations}){
+function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations,onRefresh}){
   const teamTab=filters?.tsTeam||"all";const setTT=v=>onFilterChange?.("tsTeam",v);
   const partFilter=filters?.tsPart||"all";const setPF=v=>onFilterChange?.("tsPart",v);
   const statusFilter=filters?.tsStatus||"all";const setSF=v=>onFilterChange?.("tsStatus",v);
   const assigneeFilter=filters?.tsAssignee||"all";const setAF=v=>onFilterChange?.("tsAssignee",v);
+  const versionFilter=filters?.tsVersion||"all";const setVF=v=>onFilterChange?.("tsVersion",v);
   const searchQ=filters?.tsSearch||"";const setSearchQ=v=>onFilterChange?.("tsSearch",v);
   const sortBy=filters?.tsSort||"default";const setSortBy=v=>onFilterChange?.("tsSort",v);
+  const chgRowVersion=async(tid,vid)=>{
+    try{await db.updTask(tid,{version_id:vid||null});onRefresh&&onRefresh(true)}
+    catch(e){alert("버전 변경 실패: "+(e.message||e))}
+  };
   const[collapsed,setCol]=useState(null);
   const[partOrder,setPartOrder]=useState(null);
   const[taskExpanded,setTE]=useState({});
@@ -690,14 +715,16 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
     const rows=(tasks||[]).map(t=>{
       const w=wMap[t.assignee_id]||{};const c=cMap[t.content_id]||t.contents||{};
       const team=TEAM_MAP[w.part_id]||"기타";const part=PART_LABELS[w.part_id]||w.part_id||"미배정";
-      const ver=(versions||[]).find(v=>v.id===c.version_id);
+      const effVerId=t.version_id||c.version_id||null;
+      const ver=(versions||[]).find(v=>v.id===effVerId);
+      const contentVer=(versions||[]).find(v=>v.id===c.version_id);
       const qaDeadline=ver?.target_date?new Date(new Date(ver.target_date).getTime()-30*24*60*60*1000):null;
       const endD=t.end_date?new Date(t.end_date):null;
       const risk=(!endD||!qaDeadline)?"":t.status==="done"?"안정":endD>qaDeadline?"위험":"안정";
       const allAssignees=(t.task_assignees||[]).map(ta=>ta.workers).filter(Boolean);
       const assigneeDisplay=allAssignees.length>1?(allAssignees[0].name+' +'+(allAssignees.length-1)):(w.name||t.workers?.name||"미배정");
       const assigneeTooltip=allAssignees.length>1?allAssignees.map(a=>a.name).join(', '):null;
-      return{...t,workerName:w.name||t.workers?.name||"미배정",assigneeDisplay,assigneeTooltip,allAssigneeNames:allAssignees.map(a=>a.name),team,part,contentName:c.name||t.contents?.name||"",contentCategory:c.category||t.contents?.category||"",contentType:c.type||"",partId:w.part_id||"",risk,qaDeadline};
+      return{...t,workerName:w.name||t.workers?.name||"미배정",assigneeDisplay,assigneeTooltip,allAssigneeNames:allAssignees.map(a=>a.name),team,part,contentName:c.name||t.contents?.name||"",contentCategory:c.category||t.contents?.category||"",contentType:c.type||"",partId:w.part_id||"",risk,qaDeadline,effVerId,versionLabel:ver?.label||"",contentVersionId:c.version_id||null,contentVersionLabel:contentVer?.label||"",versionMismatch:!!(t.version_id&&c.version_id&&t.version_id!==c.version_id)};
     });
     // Build parent/children map
     const byId=new Map();rows.forEach(r=>byId.set(r.id,r));
@@ -711,6 +738,10 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
       if(partFilter!=="all"&&r.partId!==partFilter)return false;
       if(statusFilter!=="all"&&r.status!==statusFilter)return false;
       if(assigneeFilter!=="all"&&r.workerName!==assigneeFilter&&!(r.allAssigneeNames||[]).includes(assigneeFilter))return false;
+      if(versionFilter!=="all"){
+        if(versionFilter==="unassigned"){if(r.effVerId)return false}
+        else if(r.effVerId!==versionFilter)return false;
+      }
       if(q&&!(r.workerName||"").toLowerCase().includes(q)&&!(r.contentName||"").toLowerCase().includes(q)&&!(r.title||"").toLowerCase().includes(q))return false;
       return true;
     };
@@ -728,12 +759,16 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
       if(sortKey==="days")return(a.days||9999)-(b.days||9999);
       if(sortKey==="risk"){const o={"위험":0,"안정":1,"":2};return(o[a.risk]??9)-(o[b.risk]??9)}
       if(sortKey==="status"){const o={blocked:0,progress:1,waiting:2,done:3};return(o[a.status]??9)-(o[b.status]??9)}
+      if(sortKey==="version"){
+        const va=(versions||[]).find(x=>x.id===a.effVerId);const vb=(versions||[]).find(x=>x.id===b.effVerId);
+        return(va?.sort_order??9999)-(vb?.sort_order??9999);
+      }
       return 0;
     };
     if(sortKey!=="default")filtered.sort((a,b)=>{const r=cmp(a,b);return sortDesc?-r:r});
     const g={};filtered.forEach(r=>{const k=r.part;if(!g[k])g[k]=[];g[k].push(r)});
     return g;
-  },[tasks,workers,contents,teamTab,partFilter,statusFilter,assigneeFilter,searchQ,sortBy]);
+  },[tasks,workers,contents,versions,teamTab,partFilter,statusFilter,assigneeFilter,versionFilter,searchQ,sortBy]);
 
   // Initialize collapsed (all collapsed by default) and part order
   const partKeys=useMemo(()=>Object.keys(grouped),[grouped]);
@@ -781,6 +816,11 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
           <option value="all">담당자 전체</option>
           {assignees.map(a=><option key={a} value={a}>{a}</option>)}
         </select>
+        <select value={versionFilter} onChange={e=>setVF(e.target.value)} title="태스크 버전 (task.version_id)" style={{fontSize:11,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
+          <option value="all">버전 전체</option>
+          <option value="unassigned">미배정</option>
+          {(versions||[]).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
+        </select>
         {sortBy!=="default"&&<button className="bt bt-s" onClick={()=>setSortBy("default")} style={{fontSize:10,padding:"2px 6px"}}>정렬 초기화</button>}
       </div>
     </div>
@@ -795,6 +835,7 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
           {key:"worker",label:"담당자",w:"64px"},
           {key:"content",label:"카테고리",w:"120px"},
           {key:"title",label:"세부 내용",w:"1fr"},
+          {key:"version",label:"버전",w:"90px"},
           {key:"start",label:"시작일",w:"80px"},
           {key:"end",label:"완료일",w:"80px"},
           {key:"days",label:"소요",w:"50px"},
@@ -828,7 +869,7 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
           const isExp=!!taskExpanded[t.id];
           const renderRow=(tt,isChild)=>{
             const ctm=TM[tt.contentType]||{};
-            return<div key={tt.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12,background:isChild?"var(--bg2)":undefined,paddingLeft:isChild?24:12}}>
+            return<div key={tt.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 90px 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12,background:isChild?"var(--bg2)":undefined,paddingLeft:isChild?24:12}}>
               <span style={{color:"var(--t4)",display:"flex",alignItems:"center",gap:2}}>{!isChild&&hasChildren?<button onClick={(e)=>{e.stopPropagation();setTE(p=>({...p,[t.id]:!p[t.id]}))}} style={{background:"none",border:"none",fontSize:10,cursor:"pointer",color:"var(--t3)",padding:0}}>{isExp?"▼":"▶"}</button>:isChild?<span style={{color:"var(--t4)"}}>└</span>:null}{isChild?"":i+1}{!isChild&&hasChildren?<span style={{fontSize:9,color:"var(--ac)",marginLeft:2}}>+{(t._children||[]).length}</span>:null}</span>
               <span style={{color:"var(--t3)",fontSize:11}}>{tt.part}</span>
               <span style={{color:"var(--t2)",fontSize:11}} title={tt.assigneeTooltip||tt.workerName}>{tt.assigneeDisplay||tt.workerName}</span>
@@ -839,6 +880,12 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
                 {blk&&<span title={"선행 미완료 "+blk.length+"건: "+blk.map(b=>b.pred_title).slice(0,3).join(', ')} style={{fontSize:10,color:"var(--rd)",fontWeight:700,flexShrink:0}}>⚠{blk.length}</span>}
                 {vio&&<span title={"날짜 위반 "+vio.length+"건 (선행 종료보다 시작이 빠름)"} style={{fontSize:10,flexShrink:0}}>📅</span>}
               </span>})()}
+              <select value={tt.version_id||''} onChange={e=>chgRowVersion(tt.id,e.target.value)}
+                title={tt.versionMismatch?("태스크 버전 ≠ 콘텐츠 버전 ("+tt.contentVersionLabel+")"):"태스크 버전 (task.version_id)"}
+                style={{fontSize:10,padding:"2px 4px",border:"1px solid "+(tt.versionMismatch?"#f59e0b":"var(--bd)"),borderRadius:3,background:tt.versionMismatch?"#fef3c7":(tt.version_id?"var(--bg)":"var(--bg3)"),fontFamily:"inherit",minWidth:0}}>
+                <option value="">(콘텐츠 상속)</option>
+                {(versions||[]).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
+              </select>
               <span style={{fontSize:11,color:"var(--t4)"}}>{tt.start_date||"-"}</span>
               <span style={{fontSize:11,color:"var(--t4)"}}>{tt.end_date||"상시"}</span>
               <span style={{fontSize:11,color:"var(--t4)",textAlign:"right"}}>{tt.days?tt.days+"일":"-"}</span>
@@ -873,19 +920,33 @@ function BuildView({contents,tasks,versions,milestones,workers,dependencies,depV
   });return m},[dependencies,taskByIdDep]);
   const violationByTask=useMemo(()=>{const m={};(depViolations||[]).forEach(v=>{(m[v.task_id]=m[v.task_id]||[]).push(v)});return m},[depViolations]);
 
-  // Group contents by version
+  // Phase 5: group by task.version_id (fallback to content.version_id)
+  // - 전체 뷰: 모든 콘텐츠를 content.version_id 버킷에 넣음 (기존 동작 유지)
+  // - 특정 버전 선택: 해당 버전 태스크가 있는 콘텐츠만 + 그 태스크만 표시
   const versionGroups=useMemo(()=>{
     const groups={};
     (versions||[]).forEach(v=>{groups[v.id]={version:v,contents:[],taskCount:0,doneCount:0}});
     groups["unassigned"]={version:{id:"unassigned",label:"미배정",target_date:null,sort_order:999},contents:[],taskCount:0,doneCount:0};
+    // content -> tasks map, then bucket tasks by version_id (task-level authority)
+    const tasksByContent={};(tasks||[]).forEach(t=>{if(t.content_id){(tasksByContent[t.content_id]=tasksByContent[t.content_id]||[]).push(t)}});
     (contents||[]).forEach(c=>{
-      const vid=c.version_id||"unassigned";
-      if(!groups[vid])groups[vid]={version:{id:vid,label:vid,target_date:null},contents:[],taskCount:0,doneCount:0};
-      const cTasks=(tasks||[]).filter(t=>t.content_id===c.id||(t.contents&&t.contents.name===c.name));
-      const done=cTasks.filter(t=>t.status==="done").length;
-      groups[vid].contents.push({...c,_tasks:cTasks,_done:done,_total:cTasks.length});
-      groups[vid].taskCount+=cTasks.length;
-      groups[vid].doneCount+=done;
+      const cTasks=tasksByContent[c.id]||[];
+      const byVer={};
+      cTasks.forEach(t=>{const vid=t.version_id||c.version_id||"unassigned";(byVer[vid]=byVer[vid]||[]).push(t)});
+      // 콘텐츠가 태스크를 하나도 안 가지는 경우, content.version_id 버킷에 빈 상태로 배치
+      if(cTasks.length===0){
+        const vid=c.version_id||"unassigned";
+        if(!groups[vid])groups[vid]={version:{id:vid,label:vid,target_date:null,sort_order:999},contents:[],taskCount:0,doneCount:0};
+        groups[vid].contents.push({...c,_tasks:[],_done:0,_total:0,_contentVerId:c.version_id});
+        return;
+      }
+      Object.entries(byVer).forEach(([vid,vTasks])=>{
+        if(!groups[vid])groups[vid]={version:{id:vid,label:vid,target_date:null,sort_order:999},contents:[],taskCount:0,doneCount:0};
+        const done=vTasks.filter(t=>t.status==="done").length;
+        groups[vid].contents.push({...c,_tasks:vTasks,_done:done,_total:vTasks.length,_contentVerId:c.version_id,_bucketVerId:vid});
+        groups[vid].taskCount+=vTasks.length;
+        groups[vid].doneCount+=done;
+      });
     });
     return Object.values(groups)
       .filter(g=>g.contents.length>0)
@@ -893,6 +954,19 @@ function BuildView({contents,tasks,versions,milestones,workers,dependencies,depV
   },[contents,tasks,versions]);
 
   const filtered=selVer==="all"?versionGroups:versionGroups.filter(g=>g.version.id===selVer);
+
+  // 콘텐츠별 태스크 버전 분포 (동일 콘텐츠가 여러 버전에 걸친 경우 표시용)
+  const contentVersionMap=useMemo(()=>{
+    const m={};
+    (tasks||[]).forEach(t=>{
+      if(!t.content_id)return;
+      const vid=t.version_id||(t.contents&&t.contents.version_id)||null;
+      if(!vid)return;
+      if(!m[t.content_id])m[t.content_id]=new Set();
+      m[t.content_id].add(vid);
+    });
+    return m;
+  },[tasks]);
 
   // Build note export
   const generateBuildNote=(group)=>{
@@ -1014,8 +1088,13 @@ function BuildView({contents,tasks,versions,milestones,workers,dependencies,depV
                 <div onClick={()=>toggleExpand(c.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",cursor:"pointer",fontSize:12}}>
                   <span style={{fontSize:14,flexShrink:0}}>{tm.i||"📦"}</span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
-                    <div style={{fontSize:10,color:"var(--t4)",marginTop:1}}>{c.owner||"미정"} · {c._total}건 태스크</div>
+                    <div style={{fontWeight:600,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                      {(()=>{const verSet=contentVersionMap[c.id];if(!verSet||verSet.size<=1)return null;
+                        const vers=[...verSet].map(vid=>(versions||[]).find(v=>v.id===vid)?.label||vid).join(", ");
+                        return<span className="b" title={"여러 버전에 태스크 분산: "+vers} style={{background:"#ede9fe",color:"#6d28d9",fontSize:9,flexShrink:0}}>🔀{verSet.size}버전</span>})()}
+                    </div>
+                    <div style={{fontSize:10,color:"var(--t4)",marginTop:1}}>{c.owner||"미정"} · {c._total}건 태스크{selVer!=="all"&&c._contentVerId&&c._contentVerId!==v.id?<span style={{marginLeft:6,color:"#7c3aed"}}>· 기본 버전 {(versions||[]).find(x=>x.id===c._contentVerId)?.label||c._contentVerId}</span>:null}</div>
                   </div>
                   {cBlk>0&&<span title={"선행 미완료 태스크 "+cBlk+"건"} className="b" style={{background:"var(--rd-bg)",color:"var(--rd)",fontSize:10,flexShrink:0}}>⚠{cBlk}</span>}
                   {cVio>0&&<span title={"날짜 위반 태스크 "+cVio+"건"} className="b" style={{background:"#fffbeb",color:"#92400e",fontSize:10,flexShrink:0}}>📅{cVio}</span>}
@@ -1035,6 +1114,7 @@ function BuildView({contents,tasks,versions,milestones,workers,dependencies,depV
                     <thead><tr style={{background:"var(--bg3)"}}>
                       <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>상태</th>
                       <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>태스크</th>
+                      <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>버전</th>
                       <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>담당</th>
                       <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>일정</th>
                       <th style={{padding:"4px 8px",textAlign:"left",color:"var(--t3)",fontWeight:500}}>JIRA</th>
@@ -1042,6 +1122,9 @@ function BuildView({contents,tasks,versions,milestones,workers,dependencies,depV
                     <tbody>{c._tasks.map(t=>{
                       const w=(workers||[]).find(x=>x.id===t.assignee_id);
                       const blk=blockingByTask[t.id];const vio=violationByTask[t.id];
+                      const tVerId=t.version_id||c.version_id||null;
+                      const tVer=(versions||[]).find(x=>x.id===tVerId);
+                      const mismatch=!!(t.version_id&&c.version_id&&t.version_id!==c.version_id);
                       return<tr key={t.id} style={{borderBottom:"1px solid var(--bg3)"}}>
                         <td style={{padding:"3px 8px"}}><D s={t.status}/></td>
                         <td style={{padding:"3px 8px",maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title}>
@@ -1049,6 +1132,7 @@ function BuildView({contents,tasks,versions,milestones,workers,dependencies,depV
                           {blk&&<span title={"선행 미완료 "+blk.length+"건: "+blk.map(b=>b.pred_title).slice(0,3).join(', ')} style={{marginLeft:4,fontSize:10,color:"var(--rd)",fontWeight:700}}>⚠{blk.length}</span>}
                           {vio&&<span title={"날짜 위반 "+vio.length+"건"} style={{marginLeft:2,fontSize:10}}>📅</span>}
                         </td>
+                        <td style={{padding:"3px 8px"}}>{tVer?<span className="b b-p" style={{fontSize:9,background:mismatch?"#fef3c7":undefined,color:mismatch?"#92400e":undefined}} title={mismatch?"태스크 버전 ≠ 콘텐츠 버전":""}>{tVer.label}{mismatch?" ⚠":""}</span>:<span style={{fontSize:9,color:"var(--t4)"}}>-</span>}</td>
                         <td style={{padding:"3px 8px",color:"var(--t3)"}}>{w?.name||""}</td>
                         <td style={{padding:"3px 8px",color:"var(--t4)",whiteSpace:"nowrap"}}>{t.start_date&&t.end_date?t.start_date.slice(5)+"~"+t.end_date.slice(5):""}</td>
                         <td style={{padding:"3px 8px"}}>{t.jira_url?<a href={t.jira_url} target="_blank" rel="noopener" style={{color:"var(--ac)",textDecoration:"none",fontSize:10}}>🎫{t.jira_url.split("/").pop()}</a>:""}</td>
@@ -1559,6 +1643,12 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
     await db.updTask(tid,{action_verb:v,title_object:titleObject,title:newTitle});
     setTasks(await db.tasks(sel.id));onRefresh(true);
   };
+  const chgTaskVersion=async(tid,vid)=>{
+    const t=tasks.find(x=>x.id===tid);if(!t)return;
+    if(!canEditTaskStatus(t,user)){alert("본인 태스크만 변경 가능");return}
+    await db.updTask(tid,{version_id:vid||null});
+    setTasks(await db.tasks(sel.id));onRefresh(true);
+  };
   const fwdGate=()=>{
     if(!sel||!user)return;const gi=GATES.findIndex(g=>g.id===sel.gate);if(gi>=GATES.length-1)return;
     const nx=GATES[gi+1].id;
@@ -1746,6 +1836,12 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
                     style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:78}}>
                     <option value="">미지정</option>
                     {ACTION_VERB_ORDER.map(k=><option key={k} value={k}>{ACTION_VERBS[k]}</option>)}
+                  </select>
+                  <select disabled={!ok} value={t.version_id||''} onChange={e=>chgTaskVersion(t.id,e.target.value)}
+                    title={ok?"태스크 버전 (task.version_id)":"본인 태스크만 변경 가능"}
+                    style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:t.version_id&&sel?.version_id&&t.version_id!==sel.version_id?"#fef3c7":"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:68}}>
+                    <option value="">버전</option>
+                    {(vr||[]).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
                   </select>
                   <select disabled={!ok} value={t.status} onChange={e=>chgTaskSt(t.id,e.target.value)}
                     title={ok?"":"본인 태스크만 변경 가능"}
@@ -2833,8 +2929,8 @@ function App(){
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load} deps={deps} allT={allT} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk} dependencies={deps} depViolations={depV}/>}
-        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
-        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV}/>}
+        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} versions={vr} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
+        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV} onRefresh={load}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
       </>}
