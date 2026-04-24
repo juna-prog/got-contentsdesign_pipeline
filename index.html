@@ -1249,6 +1249,7 @@ function TemplateApplyModal({content,onClose,onDone}){
         title:p.title,title_object:p.title_object,action_verb:p.action_verb,
         issue_type:'Task',status:'waiting',
         start_date:p.start_date,end_date:p.end_date,days:p.days,
+        version_id:content.version_id||null,
         source_key:(content.source_key||('tpl::'+content.id))+'::tpl:'+tpl.code+':'+(p.action_verb||i),
         imported_at:now,sort_order:i
       }));
@@ -2395,7 +2396,7 @@ function isUnassignedToken(s){if(!s)return true;const t=String(s).trim();if(!t)r
 function parseAssigneeNames(raw){if(!raw)return[];return raw.split(/,\s*/).map(s=>stripBracketSuffix(s.trim())).filter(s=>s&&!isUnassignedToken(s))}
 function buildContentsAndTasks(rows,ci,partId){
   const contents=[],tasks=[];let curContent=null,curParentTask=null;
-  const nameCounter={};
+  const contentByName={};  /* Phase 5: name -> 첫 등장 content. 같은 이름 반복 행은 root에 task 병합 */
   const taskCounter={};  /* source_key 기준 task 중복 카운트 - 같은 (content,title) 여러 row일 때 ::N 부여 */
   const lastVals={};
   for(const r of rows){
@@ -2403,21 +2404,26 @@ function buildContentsAndTasks(rows,ci,partId){
     // inheritance: inherit lastVals when field is empty
     const get=(k)=>{const v=rawGet(k);if(v){if(INHERIT_KEYS.includes(k))lastVals[k]=v;return v}return INHERIT_KEYS.includes(k)?(lastVals[k]||''):''};
     const rawTitle=rawGet('세부 내용');const isChildPrefix=isChildRow(rawTitle);const contentName=get('콘텐츠명');
-    /* 레벨-style Sub-Task 감지: 같은 콘텐츠명 반복 + 게이트/분류/이슈타입 raw 빈값 (작업 타입 컬럼도 체크).
-       - "한계 돌파 던전" 같이 같은 이름 반복이어도 각 Task가 게이트/분류 채우면 신규 content 유지. */
+    /* 레벨-style Sub-Task 감지: 같은 콘텐츠명 반복 + 게이트/분류/이슈타입 raw 빈값 (작업 타입 컬럼도 체크). */
     const rawGateChk=rawGet('게이트');const rawCategoryChk=rawGet('분류');
     const rawIssueChk=rawGet('이슈 타입')||rawGet('작업 타입');
-    const isRepeatName=contentName&&nameCounter[contentName];
+    const isRepeatName=!!(contentName&&contentByName[contentName]);
     const isLevelStyleSub=!isChildPrefix&&isRepeatName&&!rawGateChk&&!rawCategoryChk&&!rawIssueChk;
+    /* Phase 5: 같은 이름 반복 + 게이트/분류/이슈타입 중 하나라도 채워짐 → 버전 분할 행.
+       root content 재사용하고 task.version_id = 행의 목표로 세팅 (::N content 생성 금지) */
+    const isVersionSplit=!isChildPrefix&&isRepeatName&&(rawGateChk||rawCategoryChk||rawIssueChk);
     const isChild=isChildPrefix||isLevelStyleSub;
-    if(contentName&&!isChild){
-      nameCounter[contentName]=(nameCounter[contentName]||0)+1;
-      const suffix=nameCounter[contentName]>1?`::${nameCounter[contentName]}`:'';
-      const srcKey=`${partId}::${contentName}${suffix}`;
+    const rowVersionId=normalizeVersion(get('목표')||get('목표 빌드'));
+    if(contentName&&isVersionSplit){
+      curContent=contentByName[contentName];
+      curParentTask=null;
+    } else if(contentName&&!isChild){
+      const srcKey=`${partId}::${contentName}`;
       const ownerRaw=get('담당자')||null;
-      const versionId=normalizeVersion(get('목표')||get('목표 빌드'));
-      curContent={source_key:srcKey,name:contentName,version_id:versionId,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:ownerRaw,_owner_names:parseAssigneeNames(ownerRaw),start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
-      contents.push(curContent);curParentTask=null;
+      curContent={source_key:srcKey,name:contentName,version_id:rowVersionId,gate:normalizeGate(get('게이트')),category:get('분류')||null,owner:ownerRaw,_owner_names:parseAssigneeNames(ownerRaw),start_date:normalizeDate(get('작업 시작 일정')),end_date:normalizeDate(get('작업 완료 일정')),doc_url:get('기획서')||null,notes:get('비고')||null,part_id:partId};
+      contents.push(curContent);
+      contentByName[contentName]=curContent;
+      curParentTask=null;
     }
     if(!curContent)continue;
     const taskTitle=stripIndent(rawTitle);if(!taskTitle)continue;
@@ -2434,7 +2440,7 @@ function buildContentsAndTasks(rows,ci,partId){
     const regionRaw=get('지역/챕터')||get('지역')||get('챕터');
     /* 컬럼 우선 → 콘텐츠명 fallback → 태스크명 fallback (xlsx 일관성 없을 때 대응) */
     const regionCode=parseRegionChapter(regionRaw)||extractRegionFromText(curContent.name)||extractRegionFromText(taskTitle);
-    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:regionCode,issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
+    const task={source_key:taskSrcKey,_content_source_key:curContent.source_key,title:taskTitle,title_object:ts.title_object,action_verb:ts.action_verb,region_chapter:regionCode,issue_type:issueType,priority:parsePriority(rawGet('우선순위')),assignee_name:assigneeNames[0]||null,_assignee_names:assigneeNames,related_part:normalizeRelatedPart(get('유관파트')),status:normalizeStatus(get('상태')),start_date:normalizeDate(startRaw)||curContent.start_date,end_date:normalizeDate(endRaw)||curContent.end_date,days:parseInt(daysRaw,10)||null,jira_url:jiraRaw||null,notes:rawGet('비고')||null,version_id:rowVersionId||curContent.version_id,_is_child:isChild,_parent_source_key:isChild&&curParentTask?curParentTask.source_key:null,_jira_key:normalizeJiraKey(jiraRaw),_parent_jira_key:normalizeJiraKey(parentJiraRaw)};
     tasks.push(task);
     if(!isChild)curParentTask=task;
   }
@@ -2527,7 +2533,7 @@ function buildContentPayload(c,now){
 function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
   const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
   const w=workerByName.get(t.assignee_name);
-  return{content_id:cid,title:t.title,title_object:t.title_object||null,action_verb:t.action_verb||null,region_chapter:t.region_chapter||null,issue_type:t.issue_type||null,priority:t.priority||null,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days:t.days,jira_url:t.jira_url,notes:t.notes,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
+  return{content_id:cid,title:t.title,title_object:t.title_object||null,action_verb:t.action_verb||null,region_chapter:t.region_chapter||null,issue_type:t.issue_type||null,priority:t.priority||null,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days:t.days,jira_url:t.jira_url,notes:t.notes,version_id:t.version_id||null,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
 }
 
 function ImportModal({user,workers,onClose,onDone}){
