@@ -2453,13 +2453,19 @@ const STATUS_MAP={'시작 전':'waiting','진행 중':'progress','완료됨':'do
 function normalizeStatus(raw){if(!raw)return 'waiting';return STATUS_MAP[String(raw).trim()]||'waiting'}
 function normalizeDate(raw){
   if(!raw)return null;
-  // xlsx.js with cellDates:true 는 Date 객체. 일부 경로는 Excel serial 숫자 그대로 올 수도 있음
+  // xlsx.js cellDates:true 는 Date 객체
   if(raw instanceof Date){const y=raw.getFullYear();if(y<1970||y>2100)return null;const mo=String(raw.getMonth()+1).padStart(2,'0');const d=String(raw.getDate()).padStart(2,'0');return `${y}-${mo}-${d}`}
+  // Excel serial 숫자
   if(typeof raw==='number'&&raw>25569&&raw<100000){const d=new Date(Math.round((raw-25569)*86400*1000));const y=d.getUTCFullYear();const mo=String(d.getUTCMonth()+1).padStart(2,'0');const dd=String(d.getUTCDate()).padStart(2,'0');return `${y}-${mo}-${dd}`}
   const s=String(raw).trim();
+  // YYYY.MM.DD / YYYY-MM-DD / YYYY/MM/DD
   const m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
-  if(!m)return null;
-  return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // Date.prototype.toString() 결과 ("Wed Apr 01 2026 09:00:00 GMT+0900") fallback
+  if(/^[A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4}/.test(s)){
+    const d=new Date(s);if(!isNaN(d.getTime())){const y=d.getFullYear();if(y>=1970&&y<=2100){const mo=String(d.getMonth()+1).padStart(2,'0');const dd=String(d.getDate()).padStart(2,'0');return `${y}-${mo}-${dd}`}}
+  }
+  return null;
 }
 const RELATED_PART_MAP={'전투':'combat','전투 파트':'combat','전투파트':'combat','레벨':'level','레벨 파트':'level','필드':'field','필드 파트':'field','퀘스트':'quest','퀘스트(내러티브)':'quest','퀘스트(내러티브) 파트':'quest','아트':'art','아트 파트':'art','UX':'ux','UX 파트':'ux','클래스':'class','클래스 파트':'class','내러티브':'narrative','내러티브 파트':'narrative','검증':'validation','검증 파트':'validation','밸런스':'validation','시스템':'validation'};
 function normalizeRelatedPart(raw){if(!raw)return null;const s=String(raw).trim();if(!s)return null;if(/[\/,]/.test(s)){const parts=s.split(/\s*[\/,]\s*/).map(x=>RELATED_PART_MAP[x.trim()]||x.trim()).filter(Boolean);return parts.join(', ')}return RELATED_PART_MAP[s]||null}
@@ -2497,7 +2503,7 @@ function extractRegionFromText(text){
 function parseIssueType(raw){if(!raw)return null;const s=String(raw).trim();if(s==='Task'||s==='태스크')return 'Task';if(s==='Sub-Task'||s==='서브태스크'||s==='Sub-task')return 'Sub-Task';return null}
 function parsePriority(raw){if(!raw)return null;const n=parseInt(String(raw).trim(),10);return Number.isFinite(n)&&n>=1?n:null}
 const INDENT_PREFIXES=['└','↳','ㄴ'];
-function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'');for(const p of INDENT_PREFIXES)if(s.startsWith(p)){s=s.slice(p.length).trim();break}s=s.replace(/^-\s+/,'');return s}
+function stripIndent(t){if(!t)return '';let s=String(t).replace(/^[\s\u3000]+/,'').replace(/[\s\u3000]+$/,'');for(const p of INDENT_PREFIXES)if(s.startsWith(p)){s=s.slice(p.length).trim();break}s=s.replace(/^-\s+/,'').trim();return s}
 function isChildRow(t){if(!t)return false;const s=String(t);if(/^[\s\u3000]+/.test(s))return true;const tr=s.trimStart();for(const p of INDENT_PREFIXES)if(tr.startsWith(p))return true;if(/^-\s+/.test(tr))return true;return false}
 function normalizeJiraKey(raw){if(!raw)return null;const m=String(raw).trim().match(/([A-Z]+-\d+)/);return m?m[1]:null}
 /* v1.1: 20열 표준. 기존 14열 + 신규 6열(목표/지역/챕터/이슈 타입/우선순위 + alias). xlsx에 없는 컬럼은 indexOf=-1로 자동 무시 */
