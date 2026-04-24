@@ -81,7 +81,7 @@ const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e})};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[])};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -1204,6 +1204,115 @@ function SlotView({workers,tasks}){
 
 /* ═══ PIPELINE (with split layout) ═══ */
 /* ═══ DEPENDENCY EDITOR ═══ */
+function TemplateApplyModal({content,onClose,onDone}){
+  const[templates,setTemplates]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[tplId,setTplId]=useState(null);
+  const[startDate,setStartDate]=useState(new Date().toISOString().slice(0,10));
+  const[saving,setSaving]=useState(false);
+  const[error,setError]=useState(null);
+
+  useEffect(()=>{db.templates().then(ts=>{setTemplates(ts||[]);setLoading(false)}).catch(()=>{setTemplates([]);setLoading(false)})},[]);
+
+  const partPrefix=(content?.source_key||'').split('::')[0];
+  const filtered=(templates||[]).filter(t=>!partPrefix||t.part_id===partPrefix);
+  const allParts=!partPrefix||filtered.length===0;
+  const shown=allParts?(templates||[]):filtered;
+  const tpl=shown.find(t=>t.id===tplId);
+
+  const preview=useMemo(()=>{
+    if(!tpl||!content)return[];
+    const base=new Date(startDate);
+    return(tpl.steps||[]).map(s=>{
+      const sd=new Date(base);sd.setDate(sd.getDate()+(s.offset_days||0));
+      const ed=new Date(sd);ed.setDate(ed.getDate()+Math.max(1,s.duration||1)-1);
+      return{
+        action_verb:s.action_verb||null,
+        title_object:content.name,
+        title:composeTitle(content.name,s.action_verb),
+        start_date:sd.toISOString().slice(0,10),
+        end_date:ed.toISOString().slice(0,10),
+        days:s.duration||1,
+        _dep_on_verb:s.depends_on||null,
+        _dep_type:s.dep_type||'finishes_before'
+      };
+    });
+  },[tpl,startDate,content]);
+
+  const apply=async()=>{
+    if(!tpl||!content)return;
+    setSaving(true);setError(null);
+    try{
+      const now=new Date().toISOString();
+      const payload=preview.map((p,i)=>({
+        content_id:content.id,
+        title:p.title,title_object:p.title_object,action_verb:p.action_verb,
+        issue_type:'Task',status:'waiting',
+        start_date:p.start_date,end_date:p.end_date,days:p.days,
+        source_key:(content.source_key||('tpl::'+content.id))+'::tpl:'+tpl.code+':'+(p.action_verb||i),
+        imported_at:now,sort_order:i
+      }));
+      const created=await db.bulkTasks(payload);
+      if(!created||!Array.isArray(created)||created.length===0)throw new Error('태스크 생성 응답 없음');
+      const verbToId={};(created||[]).forEach(c=>{if(c.action_verb)verbToId[c.action_verb]=c.id});
+      const depList=[];
+      preview.forEach(p=>{
+        if(!p._dep_on_verb)return;
+        const succ=verbToId[p.action_verb];const pred=verbToId[p._dep_on_verb];
+        if(succ&&pred)depList.push({task_id:succ,depends_on_task_id:pred,dep_type:p._dep_type,created_by:'template:'+tpl.code,notes:null});
+      });
+      let depOk=0,depFail=0;
+      for(const d of depList){try{await db.addDep(d);depOk++}catch(e){depFail++}}
+      onDone&&onDone({tasks:created.length,deps:depOk,depFail});
+      onClose();
+    }catch(e){setError((e.message||'').slice(0,240));setSaving(false)}
+  };
+
+  return<div className="modal-bg" onClick={saving?undefined:onClose}>
+    <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:620,width:"90vw",maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
+      <div className="modal-h">📋 표준 태스크 생성 - {content?.name||""}</div>
+      <div className="modal-b" style={{overflow:"auto",flex:1}}>
+        {loading?<div style={{fontSize:12,color:"var(--t4)",padding:12}}>템플릿 불러오는 중...</div>:
+        shown.length===0?<div style={{fontSize:12,color:"var(--t4)",padding:12}}>사용 가능한 템플릿이 없습니다.</div>:<>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4,fontWeight:600}}>템플릿 {allParts&&<span style={{fontWeight:400,color:"var(--t4)"}}>(파트 {partPrefix||"?"}용 없음 - 전체 표시)</span>}</div>
+            <select value={tplId||''} onChange={e=>setTplId(parseInt(e.target.value)||null)}
+              style={{width:"100%",fontSize:12,padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}>
+              <option value="">선택하세요...</option>
+              {shown.map(t=><option key={t.id} value={t.id}>[{t.part_id}] {t.label} ({(t.steps||[]).length}스텝)</option>)}
+            </select>
+            {tpl&&<div style={{fontSize:11,color:"var(--t4)",marginTop:6}}>{tpl.description}</div>}
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4,fontWeight:600}}>시작일 (기준일 offset 0일)</div>
+            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+              style={{fontSize:12,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,background:"var(--bg)",fontFamily:"inherit"}}/>
+          </div>
+          {preview.length>0&&<div style={{marginBottom:8}}>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:6,fontWeight:600}}>미리보기 ({preview.length}건 태스크 + {preview.filter(p=>p._dep_on_verb).length}건 의존성)</div>
+            <div style={{border:"1px solid var(--bd)",borderRadius:4,maxHeight:280,overflow:"auto"}}>
+              {preview.map((p,i)=><div key={i} style={{padding:"6px 10px",borderBottom:"1px solid var(--bg3)",fontSize:11,display:"flex",alignItems:"center",gap:6}}>
+                <span style={{color:"#4338ca",fontWeight:600,minWidth:96,fontSize:10}}>[{ACTION_VERBS[p.action_verb]||p.action_verb||"-"}]</span>
+                <span style={{flex:1,color:"var(--t2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={p.title}>{p.title_object}</span>
+                <span style={{color:"var(--t4)",fontSize:10,whiteSpace:"nowrap"}}>{p.start_date.slice(5)}~{p.end_date.slice(5)} ({p.days}일)</span>
+                {p._dep_on_verb&&<span title={"선행: "+(ACTION_VERBS[p._dep_on_verb]||p._dep_on_verb)+" ("+p._dep_type+")"}
+                  style={{fontSize:10,color:p._dep_type==='finishes_before'?"#2563eb":"#0891b2",fontWeight:600}}>↩{p._dep_type==='finishes_before'?'FB':'ST'}</span>}
+              </div>)}
+            </div>
+          </div>}
+          {error&&<div style={{color:"var(--rd)",fontSize:11,padding:"6px 8px",background:"var(--rd-bg)",borderRadius:4,marginTop:8}}>{error}</div>}
+        </>}
+      </div>
+      <div className="modal-f">
+        <button className="bt" onClick={onClose} disabled={saving}>취소</button>
+        <button className="bt bt-g" onClick={apply} disabled={!tpl||saving||loading||preview.length===0}>
+          {saving?'생성 중...':preview.length>0?preview.length+'건 생성':'생성'}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
 function tokenize(s){if(!s)return[];const str=String(s).toLowerCase();const toks=[];let buf='';for(const ch of str){if(/[\p{L}\p{N}]/u.test(ch))buf+=ch;else{if(buf.length>=2)toks.push(buf);buf=''}}if(buf.length>=2)toks.push(buf);return toks}
 const STOPWORDS=new Set(['task','sub','작업','기획','제작','구현','설정','방향','작업','관리','대응','진행','문서','문서화','리스트','업무','관련','데이터','추가','변경','수정','확인','체크','기본','일반']);
 function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
@@ -1372,6 +1481,7 @@ function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
 
 function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const[depEditTask,setDepEditTask]=useState(null);
+  const[tmplModal,setTmplModal]=useState(false);
   const ownerPartMap=useMemo(()=>{const m={};(wk||[]).forEach(w=>{m[w.name]={team:TEAM_MAP[w.part_id]||"",part:PART_LABELS[w.part_id]||""}});return m},[wk]);
   const[sel,setSel]=useState(null);
   const[tasks,setTasks]=useState([]);
@@ -1567,6 +1677,12 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
             style={{width:"100%",marginBottom:8}}>{nextGate.l} {nextGate.s}로 전환 →</button>}
           {sel.locked&&user?.is_team_lead&&<button className="bt" onClick={unlockContent} style={{width:"100%",marginBottom:8}}>🔓 잠금 해제</button>}
 
+          {/* Template apply button - only for empty content (new) */}
+          {tasks.length===0&&(user?.is_lead||user?.is_team_lead)&&!sel.locked&&<button className="bt" onClick={()=>setTmplModal(true)}
+            style={{width:"100%",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"#eef2ff",color:"#4338ca",border:"1px solid #c7d2fe",fontWeight:600}}>
+            <span style={{fontSize:14}}>📋</span> 표준 태스크 생성 (템플릿)
+          </button>}
+
           {/* JIRA create button */}
           {(user?.is_lead||user?.is_team_lead)&&<button className="bt" onClick={()=>setJiraModal(true)}
             style={{width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
@@ -1659,6 +1775,13 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
     {jiraModal&&sel&&<JiraPreviewModal content={sel} tasks={tasks} versions={vr} workers={wk} user={user}
       onClose={()=>setJiraModal(false)} onRefresh={()=>{db.tasks(sel.id).then(setTasks);onRefresh(true)}}/>}
     {depEditTask&&<DependencyEditor task={depEditTask} deps={deps} allTasks={allT} onClose={()=>setDepEditTask(null)} onRefresh={()=>{onDepRefresh&&onDepRefresh()}}/>}
+    {tmplModal&&sel&&<TemplateApplyModal content={sel} onClose={()=>setTmplModal(false)}
+      onDone={(res)=>{
+        db.tasks(sel.id).then(setTasks).catch(()=>{});
+        onRefresh&&onRefresh(true);
+        onDepRefresh&&onDepRefresh();
+        alert('생성 완료: 태스크 '+res.tasks+'건, 의존성 '+res.deps+'건'+(res.depFail?' (의존성 실패 '+res.depFail+'건)':''));
+      }}/>}
   </div>
 }
 
