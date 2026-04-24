@@ -1822,6 +1822,9 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
     const existKey=new Set((deps||[]).filter(d=>d.dep_type==='finishes_before').map(d=>d.task_id+'::'+d.depends_on_task_id));
     const newPairs=planned.filter(p=>!existKey.has(p.succ.id+'::'+p.pred.id));
     if(newPairs.length===0){alert('모든 연속 쌍이 이미 연결됨');return}
+    if(sel.version_id==='미정'){
+      if(!confirm(`⚠️ 목표(version_id) 미정 콘텐츠입니다.\n\n미정 콘텐츠는 일정이 placeholder 이기 때문에 자동 연결 시 가짜 의존성 위반이 대량 발생할 수 있습니다.\n(과거 사냥대회/기억의 제단 사례 참고)\n\n그래도 ${newPairs.length}건 자동 연결하시겠습니까?`))return;
+    }
     const preview=newPairs.slice(0,3).map(p=>`  ${p.pred.title} → ${p.succ.title}`).join('\n');
     if(!confirm(`${newPairs.length}건의 Sub-Task 순차 의존성(finishes_before)을 생성합니다.\n\n예시:\n${preview}${newPairs.length>3?`\n  ...외 ${newPairs.length-3}건`:''}\n\n진행하시겠습니까?`))return;
     let ok=0,fail=0;const errs=[];
