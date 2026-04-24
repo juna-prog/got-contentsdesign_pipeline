@@ -1742,21 +1742,22 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
             <div style={{fontSize:11,color:"var(--t4)"}}>{gt.s} - {g[gt.id]?.length||0}건</div></div>
           <div className="gate-drop" onDragOver={onDragOver} onDrop={e=>onDrop(e,gt.id)}
             onDragEnter={e=>e.currentTarget.classList.add("over")} onDragLeave={e=>e.currentTarget.classList.remove("over")}>
-            {g[gt.id]?.map((c,ci)=>{const tm=TM[c.type]||{};const v=vr?.find(x=>x.id===c.version_id);const gLen=g[gt.id].length;
+            {g[gt.id]?.map((c,ci)=>{const tm=TM[c.type]||{};const gLen=g[gt.id].length;
               const editable=canEditContent(c,user);
               const verSet=contentVerDist[c.id];
               const verList=verSet?[...verSet]:[];
               const multiVer=verList.length>1;
-              const singleTaskVer=!multiVer&&verList.length===1?verList[0]:null;
-              const singleMismatch=singleTaskVer&&singleTaskVer!==c.version_id;
+              // task 기준 effective version: 1개 수렴이면 그 버전, 혼재면 content.version_id
+              const effVerId=verList.length===1?verList[0]:c.version_id;
+              const effVer=vr?.find(x=>x.id===effVerId);
+              const derivedFromTask=verList.length===1&&verList[0]!==c.version_id;
               return<div key={c.id} className={"cd"+(sel?.id===c.id?" sel":"")+(dragId===c.id?" dragging":"")}
                 draggable={editable} onDragStart={e=>onDragStart(e,c)} onDragEnd={onDragEnd} onClick={()=>setSel(c)}
                 style={{cursor:editable?"pointer":"pointer",borderColor:c.locked?"#fcd34d":undefined}}>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:13}}>{tm.i}</span>
-                  {v&&<B ch={v.label} c="b-p"/>}
+                  {effVer&&<B ch={effVer.label} c="b-p"/>}
                   {multiVer&&<span className="b" title={"태스크 분산: "+verList.map(vid=>vr?.find(x=>x.id===vid)?.label||vid).join(", ")} style={{background:"#ede9fe",color:"#6d28d9",fontSize:9}}>🔀{verList.length}</span>}
-                  {singleMismatch&&<span className="b" title={"전 태스크 "+(vr?.find(x=>x.id===singleTaskVer)?.label||singleTaskVer)+" (콘텐츠 기본 "+(v?.label||c.version_id)+")와 불일치"} style={{background:"#fef3c7",color:"#92400e",fontSize:9}}>⚠{vr?.find(x=>x.id===singleTaskVer)?.label||singleTaskVer}</span>}
                   {c.locked&&<span title="잠금" style={{fontSize:11}}>🔒</span>}
                   {AC[c.alert]&&<B ch={AL[c.alert]} c={AC[c.alert]}/>}
                   {gLen>1&&editable&&<span style={{marginLeft:"auto",display:"flex",gap:1}}>
