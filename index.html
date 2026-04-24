@@ -662,7 +662,7 @@ function GanttView({tasks,workers,milestones,parts,contents,dependencies,depViol
 }
 
 /* ═══ TASK SHEET ═══ */
-function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
+function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations}){
   const teamTab=filters?.tsTeam||"all";const setTT=v=>onFilterChange?.("tsTeam",v);
   const partFilter=filters?.tsPart||"all";const setPF=v=>onFilterChange?.("tsPart",v);
   const statusFilter=filters?.tsStatus||"all";const setSF=v=>onFilterChange?.("tsStatus",v);
@@ -672,6 +672,16 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
   const[collapsed,setCol]=useState(null);
   const[partOrder,setPartOrder]=useState(null);
   const[taskExpanded,setTE]=useState({});
+
+  // ── DEPS DERIVED (same pattern as GanttView) ──
+  const taskByIdDep=useMemo(()=>{const m={};(tasks||[]).forEach(t=>m[t.id]=t);return m},[tasks]);
+  const blockingByTask=useMemo(()=>{const m={};(dependencies||[]).forEach(d=>{
+    if(d.dep_type!=='finishes_before')return;
+    const pred=taskByIdDep[d.depends_on_task_id];
+    if(!pred||pred.status==='done')return;
+    (m[d.task_id]=m[d.task_id]||[]).push({pred_id:d.depends_on_task_id,pred_title:pred.title||'',pred_status:pred.status});
+  });return m},[dependencies,taskByIdDep]);
+  const violationByTask=useMemo(()=>{const m={};(depViolations||[]).forEach(v=>{(m[v.task_id]=m[v.task_id]||[]).push(v)});return m},[depViolations]);
 
   // Group tasks by team->part->worker
   const grouped=useMemo(()=>{
@@ -823,7 +833,12 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
               <span style={{color:"var(--t3)",fontSize:11}}>{tt.part}</span>
               <span style={{color:"var(--t2)",fontSize:11}} title={tt.assigneeTooltip||tt.workerName}>{tt.assigneeDisplay||tt.workerName}</span>
               <span style={{color:ctm.c||"var(--t2)",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ctm.i||""} {tt.contentName}</span>
-              <span style={{color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={formatTaskDisplay(tt,{category:tt.contentCategory||tt.category})}>{formatTaskDisplay(tt,{category:tt.contentCategory||tt.category})}</span>
+              {(()=>{const blk=blockingByTask[tt.id];const vio=violationByTask[tt.id];const disp=formatTaskDisplay(tt,{category:tt.contentCategory||tt.category});
+              return<span style={{color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:4,minWidth:0}} title={disp}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{disp}</span>
+                {blk&&<span title={"선행 미완료 "+blk.length+"건: "+blk.map(b=>b.pred_title).slice(0,3).join(', ')} style={{fontSize:10,color:"var(--rd)",fontWeight:700,flexShrink:0}}>⚠{blk.length}</span>}
+                {vio&&<span title={"날짜 위반 "+vio.length+"건 (선행 종료보다 시작이 빠름)"} style={{fontSize:10,flexShrink:0}}>📅</span>}
+              </span>})()}
               <span style={{fontSize:11,color:"var(--t4)"}}>{tt.start_date||"-"}</span>
               <span style={{fontSize:11,color:"var(--t4)"}}>{tt.end_date||"상시"}</span>
               <span style={{fontSize:11,color:"var(--t4)",textAlign:"right"}}>{tt.days?tt.days+"일":"-"}</span>
@@ -841,12 +856,22 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange}){
 }
 
 /* ═══ BUILD VIEW (Phase D) ═══ */
-function BuildView({contents,tasks,versions,milestones,workers}){
+function BuildView({contents,tasks,versions,milestones,workers,dependencies,depViolations}){
   const[selVer,setSelVer]=useState("all");
   const[expandedIds,setExpandedIds]=useState({});
   const[exportModal,setExportModal]=useState(null);
 
   const toggleExpand=(id)=>setExpandedIds(p=>({...p,[id]:!p[id]}));
+
+  // ── DEPS DERIVED (same pattern as GanttView) ──
+  const taskByIdDep=useMemo(()=>{const m={};(tasks||[]).forEach(t=>m[t.id]=t);return m},[tasks]);
+  const blockingByTask=useMemo(()=>{const m={};(dependencies||[]).forEach(d=>{
+    if(d.dep_type!=='finishes_before')return;
+    const pred=taskByIdDep[d.depends_on_task_id];
+    if(!pred||pred.status==='done')return;
+    (m[d.task_id]=m[d.task_id]||[]).push({pred_id:d.depends_on_task_id,pred_title:pred.title||'',pred_status:pred.status});
+  });return m},[dependencies,taskByIdDep]);
+  const violationByTask=useMemo(()=>{const m={};(depViolations||[]).forEach(v=>{(m[v.task_id]=m[v.task_id]||[]).push(v)});return m},[depViolations]);
 
   // Group contents by version
   const versionGroups=useMemo(()=>{
@@ -983,6 +1008,8 @@ function BuildView({contents,tasks,versions,milestones,workers}){
               const expanded=expandedIds[c.id];
               const prog=c._total>0?Math.round(c._done/c._total*100):0;
 
+              const cBlk=(c._tasks||[]).filter(t=>blockingByTask[t.id]).length;
+              const cVio=(c._tasks||[]).filter(t=>violationByTask[t.id]).length;
               return<div key={c.id} style={{borderBottom:"1px solid var(--bg3)"}}>
                 <div onClick={()=>toggleExpand(c.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",cursor:"pointer",fontSize:12}}>
                   <span style={{fontSize:14,flexShrink:0}}>{tm.i||"📦"}</span>
@@ -990,6 +1017,8 @@ function BuildView({contents,tasks,versions,milestones,workers}){
                     <div style={{fontWeight:600,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
                     <div style={{fontSize:10,color:"var(--t4)",marginTop:1}}>{c.owner||"미정"} · {c._total}건 태스크</div>
                   </div>
+                  {cBlk>0&&<span title={"선행 미완료 태스크 "+cBlk+"건"} className="b" style={{background:"var(--rd-bg)",color:"var(--rd)",fontSize:10,flexShrink:0}}>⚠{cBlk}</span>}
+                  {cVio>0&&<span title={"날짜 위반 태스크 "+cVio+"건"} className="b" style={{background:"#fffbeb",color:"#92400e",fontSize:10,flexShrink:0}}>📅{cVio}</span>}
                   {gate&&<span className="b" style={{background:gate.c+"18",color:gate.c,fontSize:10}}>{gate.l} {gate.s}</span>}
                   {/* Mini progress */}
                   <div style={{width:48,height:4,background:"var(--bg3)",borderRadius:2,flexShrink:0}}>
@@ -1012,9 +1041,14 @@ function BuildView({contents,tasks,versions,milestones,workers}){
                     </tr></thead>
                     <tbody>{c._tasks.map(t=>{
                       const w=(workers||[]).find(x=>x.id===t.assignee_id);
+                      const blk=blockingByTask[t.id];const vio=violationByTask[t.id];
                       return<tr key={t.id} style={{borderBottom:"1px solid var(--bg3)"}}>
                         <td style={{padding:"3px 8px"}}><D s={t.status}/></td>
-                        <td style={{padding:"3px 8px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</td>
+                        <td style={{padding:"3px 8px",maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title}>
+                          {t.title}
+                          {blk&&<span title={"선행 미완료 "+blk.length+"건: "+blk.map(b=>b.pred_title).slice(0,3).join(', ')} style={{marginLeft:4,fontSize:10,color:"var(--rd)",fontWeight:700}}>⚠{blk.length}</span>}
+                          {vio&&<span title={"날짜 위반 "+vio.length+"건"} style={{marginLeft:2,fontSize:10}}>📅</span>}
+                        </td>
                         <td style={{padding:"3px 8px",color:"var(--t3)"}}>{w?.name||""}</td>
                         <td style={{padding:"3px 8px",color:"var(--t4)",whiteSpace:"nowrap"}}>{t.start_date&&t.end_date?t.start_date.slice(5)+"~"+t.end_date.slice(5):""}</td>
                         <td style={{padding:"3px 8px"}}>{t.jira_url?<a href={t.jira_url} target="_blank" rel="noopener" style={{color:"var(--ac)",textDecoration:"none",fontSize:10}}>🎫{t.jira_url.split("/").pop()}</a>:""}</td>
@@ -2669,9 +2703,9 @@ function App(){
       {ld?<div style={{textAlign:"center",padding:60,fontSize:15,color:"var(--t3)"}}>데이터를 불러오는 중...</div>:
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load} deps={deps} allT={allT} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
-        {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk}/>}
+        {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk} dependencies={deps} depViolations={depV}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
-        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter}/>}
+        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
       </>}
