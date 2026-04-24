@@ -68,6 +68,8 @@ select option{background:var(--bg)}
 .tab-row button.on{color:var(--ac);border-bottom-color:var(--ac)}
 .lock-badge{display:inline-flex;align-items:center;font-size:10px;color:var(--t4)}
 .disabled-ctrl{opacity:.45;cursor:not-allowed!important;pointer-events:none}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.ver-saved{border:2px solid #10b981 !important;box-shadow:0 0 0 2px rgba(16,185,129,.18);transition:border-color .3s,box-shadow .3s}
 </style>
 </head>
 <body>
@@ -690,9 +692,15 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
   const versionFilter=filters?.tsVersion||"all";const setVF=v=>onFilterChange?.("tsVersion",v);
   const searchQ=filters?.tsSearch||"";const setSearchQ=v=>onFilterChange?.("tsSearch",v);
   const sortBy=filters?.tsSort||"default";const setSortBy=v=>onFilterChange?.("tsSort",v);
+  const[justSavedVer,setJustSavedVer]=useState(null);
   const chgRowVersion=async(tid,vid)=>{
-    try{await db.updTask(tid,{version_id:vid||null});onRefresh&&onRefresh(true)}
-    catch(e){alert("버전 변경 실패: "+(e.message||e))}
+    try{
+      await db.updTask(tid,{version_id:vid||null});
+      setJustSavedVer(tid);
+      setTimeout(()=>setJustSavedVer(p=>p===tid?null:p),800);
+      window.showToast&&window.showToast("버전 저장됨");
+      onRefresh&&onRefresh(true);
+    }catch(e){alert("버전 변경 실패: "+(e.message||e))}
   };
   const[collapsed,setCol]=useState(null);
   const[partOrder,setPartOrder]=useState(null);
@@ -881,8 +889,9 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
                 {vio&&<span title={"날짜 위반 "+vio.length+"건 (선행 종료보다 시작이 빠름)"} style={{fontSize:10,flexShrink:0}}>📅</span>}
               </span>})()}
               <select value={tt.version_id||''} onChange={e=>chgRowVersion(tt.id,e.target.value)}
+                className={justSavedVer===tt.id?"ver-saved":""}
                 title={tt.versionMismatch?("태스크 버전 ≠ 콘텐츠 버전 ("+tt.contentVersionLabel+")"):"태스크 버전 (task.version_id)"}
-                style={{fontSize:10,padding:"2px 4px",border:"1px solid "+(tt.versionMismatch?"#f59e0b":"var(--bd)"),borderRadius:3,background:tt.versionMismatch?"#fef3c7":(tt.version_id?"var(--bg)":"var(--bg3)"),fontFamily:"inherit",minWidth:0}}>
+                style={{fontSize:10,padding:"2px 4px",border:"1px solid "+(tt.versionMismatch?"#f59e0b":"var(--bd)"),borderRadius:3,background:tt.versionMismatch?"#fef3c7":(tt.version_id?"var(--bg)":"var(--bg3)"),fontFamily:"inherit",minWidth:0,transition:"border-color .3s,box-shadow .3s"}}>
                 <option value="">(콘텐츠 상속)</option>
                 {(versions||[]).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
               </select>
@@ -1567,6 +1576,7 @@ function DependencyEditor({task,deps,allTasks,onClose,onRefresh}){
 function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const[depEditTask,setDepEditTask]=useState(null);
   const[tmplModal,setTmplModal]=useState(false);
+  const[justSavedVer,setJustSavedVer]=useState(null);
   const ownerPartMap=useMemo(()=>{const m={};(wk||[]).forEach(w=>{m[w.name]={team:TEAM_MAP[w.part_id]||"",part:PART_LABELS[w.part_id]||""}});return m},[wk]);
   const[sel,setSel]=useState(null);
   const[tasks,setTasks]=useState([]);
@@ -1646,8 +1656,13 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const chgTaskVersion=async(tid,vid)=>{
     const t=tasks.find(x=>x.id===tid);if(!t)return;
     if(!canEditTaskStatus(t,user)){alert("본인 태스크만 변경 가능");return}
-    await db.updTask(tid,{version_id:vid||null});
-    setTasks(await db.tasks(sel.id));onRefresh(true);
+    try{
+      await db.updTask(tid,{version_id:vid||null});
+      setJustSavedVer(tid);
+      setTimeout(()=>setJustSavedVer(p=>p===tid?null:p),800);
+      window.showToast&&window.showToast("버전 저장됨");
+      setTasks(await db.tasks(sel.id));onRefresh(true);
+    }catch(e){alert("버전 저장 실패: "+(e.message||e))}
   };
   const fwdGate=()=>{
     if(!sel||!user)return;const gi=GATES.findIndex(g=>g.id===sel.gate);if(gi>=GATES.length-1)return;
@@ -1838,8 +1853,9 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
                     {ACTION_VERB_ORDER.map(k=><option key={k} value={k}>{ACTION_VERBS[k]}</option>)}
                   </select>
                   <select disabled={!ok} value={t.version_id||''} onChange={e=>chgTaskVersion(t.id,e.target.value)}
+                    className={justSavedVer===t.id?"ver-saved":""}
                     title={ok?"태스크 버전 (task.version_id)":"본인 태스크만 변경 가능"}
-                    style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:t.version_id&&sel?.version_id&&t.version_id!==sel.version_id?"#fef3c7":"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:68}}>
+                    style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:t.version_id&&sel?.version_id&&t.version_id!==sel.version_id?"#fef3c7":"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:68,transition:"border-color .3s,box-shadow .3s"}}>
                     <option value="">버전</option>
                     {(vr||[]).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
                   </select>
@@ -2814,6 +2830,12 @@ function App(){
   const[user,setUser]=useState(null);const[userModal,setUserModal]=useState(false);
   const[jumpId,setJumpId]=useState(null);
   const[importModal,setImportModal]=useState(false);
+  const[toastMsg,setToastMsg]=useState(null);
+  useEffect(()=>{
+    let timer;
+    window.showToast=(msg)=>{setToastMsg(msg);if(timer)clearTimeout(timer);timer=setTimeout(()=>setToastMsg(null),2000)};
+    return()=>{delete window.showToast;if(timer)clearTimeout(timer)};
+  },[]);
   // Shared filters (persist across view switches, reset on page close)
   const[filters,setFilters]=useState({});
   const setFilter=(key,val)=>setFilters(p=>({...p,[key]:val}));
@@ -2939,6 +2961,7 @@ function App(){
     {userModal&&wk.length>0&&<UserModal workers={wk} onPick={pickUser} onClose={()=>setUserModal(false)} canClose={!!user}/>}
     {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={()=>load(true)}/>}
     {jiraSyncModal&&<JiraSyncModal tasks={allT} onClose={()=>setJiraSyncModal(false)} onDone={()=>load(true)}/>}
+    {toastMsg&&<div style={{position:"fixed",top:16,right:16,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.18)",zIndex:9999,animation:"toastIn .18s ease-out"}}>✓ {toastMsg}</div>}
   </div>
 }
 ReactDOM.render(<App/>,document.getElementById("app"));
