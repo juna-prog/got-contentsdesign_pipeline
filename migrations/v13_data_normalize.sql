@@ -85,33 +85,42 @@ BEGIN
   END IF;
 END $$;
 
--- 1. ::N 콘텐츠의 task 들을 root 콘텐츠로 이전
---    + task.version_id 를 원 ::N 콘텐츠의 version_id 로 재설정
---    + task.source_key 에서 "::N" 세그먼트 제거하여 새 파서 출력과 일관성 확보
-UPDATE tasks t
-SET content_id = m.root_id,
-    version_id = COALESCE(m.suffix_version_id, m.root_version),
-    source_key = regexp_replace(t.source_key, '::' || substring(m.suffix_source_key FROM '::([0-9]+)$') || '::', '::'),
-    updated_at = now()
-FROM migration_review_v13 m
-WHERE t.content_id = m.suffix_content_id;
+-- 1. Row-by-row 병합: content_id 이동 + version_id 재설정 + source_key 정규화
+--    단일 UPDATE 문은 UNIQUE 제약 검사가 문장 내에서 걸려 충돌 시 전체 롤백된다.
+--    같은 task title 이 여러 ::N content 에 중복되는 경우 (예: field::세력은신처::웨스터랜드 4.1 작업 x3)
+--    루프로 처리하면서 충돌 발견 즉시 ::mig{id} 접미사를 부여한다.
+DO $$
+DECLARE
+  r RECORD;
+  target TEXT;
+  n_suffix TEXT;
+BEGIN
+  FOR r IN
+    SELECT t.id, t.source_key, m.root_id, m.suffix_version_id, m.root_version, m.suffix_source_key
+    FROM tasks t
+    JOIN migration_review_v13 m ON t.content_id = m.suffix_content_id
+    ORDER BY t.id
+  LOOP
+    n_suffix := substring(r.suffix_source_key FROM '::([0-9]+)$');
+    target := regexp_replace(r.source_key, '::' || n_suffix || '::', '::');
+    IF EXISTS (SELECT 1 FROM tasks WHERE source_key = target AND id <> r.id) THEN
+      target := target || '::mig' || r.id;
+    END IF;
+    UPDATE tasks
+    SET content_id = r.root_id,
+        version_id = COALESCE(r.suffix_version_id, r.root_version),
+        source_key = target,
+        updated_at = now()
+    WHERE id = r.id;
+  END LOOP;
+END $$;
 
--- 2. source_key UNIQUE 충돌 안전장치
---    (::N 제거로 root 기존 task와 같은 키가 되면 구분 suffix 부여)
-UPDATE tasks t1
-SET source_key = t1.source_key || '::mig' || t1.id
-WHERE EXISTS (
-  SELECT 1 FROM tasks t2
-  WHERE t2.source_key = t1.source_key
-    AND t2.id < t1.id
-);
-
--- 3. 빈 ::N 콘텐츠 삭제 (task가 모두 이전된 후)
+-- 2. 빈 ::N 콘텐츠 삭제 (task가 모두 이전된 후)
 DELETE FROM contents c
 WHERE c.source_key ~ '::[0-9]+$'
   AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.content_id = c.id);
 
--- 4. 혹시 남은 ::N 콘텐츠 있는지 확인 (task가 안 옮겨진 케이스)
+-- 3. 혹시 남은 ::N 콘텐츠 있는지 확인 (task가 안 옮겨진 케이스)
 DO $$
 DECLARE remaining INT;
 BEGIN
@@ -121,7 +130,7 @@ BEGIN
   END IF;
 END $$;
 
--- 5. 검증 뷰 정리
+-- 4. 검증 뷰 정리
 DROP VIEW IF EXISTS migration_review_v13 CASCADE;
 DROP VIEW IF EXISTS migration_summary_v13 CASCADE;
 
@@ -131,4 +140,5 @@ COMMIT;
 -- SELECT COUNT(*) FROM contents WHERE source_key ~ '::[0-9]+$';  -- 0 이어야 함
 -- SELECT version_id, COUNT(*) FROM tasks GROUP BY version_id ORDER BY 2 DESC;
 -- SELECT c.name, t.title, t.version_id FROM tasks t JOIN contents c ON t.content_id=c.id WHERE c.name = '한계 돌파 던전' ORDER BY t.version_id;
+-- SELECT count(*) FROM tasks WHERE source_key LIKE '%::mig%';  -- 이름 중복으로 suffix 붙은 task 수
 */
