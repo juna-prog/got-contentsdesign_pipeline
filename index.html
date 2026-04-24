@@ -2356,6 +2356,34 @@ function renderJiraTemplate(tpl,vars){
   if(!tpl)return"";
   return tpl.replace(/\{\{(\w+)\}\}/g,(m,k)=>vars[k]!=null?String(vars[k]):"");
 }
+/* markdown-ish description -> JIRA Server wiki markup
+   - "## 헤더" / "[헤더]" 단독 줄 -> "*헤더*"
+   - "- item" / "• item" / "· item" -> "* item"
+   - "---" -> "----"
+   - 연속 텍스트 줄에는 "\\" 강제 개행 접미사 (빈 줄이 문단 구분)
+   source: workops-jira-ext/popup.js formatJiraDescription */
+function formatJiraDescription(text){
+  if(!text)return"";
+  const lines=String(text).replace(/\r\n/g,"\n").split("\n");
+  const out=[];
+  const isHeader=(s)=>/^\s*(##+\s+.+|\[[^\]]+\])\s*$/.test(s);
+  const isBullet=(s)=>/^\s*[-•·]\s+/.test(s);
+  const isDivider=(s)=>/^\s*-{3,}\s*$/.test(s);
+  const stripHeader=(s)=>s.replace(/^\s*##+\s+/,"").replace(/^\s*\[([^\]]+)\]\s*$/,"$1").trim();
+  const stripBullet=(s)=>s.replace(/^\s*[-•·]\s+/,"").trim();
+  for(let i=0;i<lines.length;i++){
+    const cur=lines[i]; const trimmed=cur.trim();
+    if(trimmed===""){out.push("");continue}
+    if(isDivider(cur)){out.push("----");continue}
+    if(isHeader(cur)){out.push("*"+stripHeader(cur)+"*");continue}
+    if(isBullet(cur)){out.push("* "+stripBullet(cur));continue}
+    // 일반 텍스트 - 다음 줄이 계속 본문(non-empty, non-header, non-bullet) 이면 \\ 강제개행
+    const next=lines[i+1];
+    const nextIsContinuation=next!=null&&next.trim()!==""&&!isHeader(next)&&!isBullet(next)&&!isDivider(next);
+    out.push(trimmed+(nextIsContinuation?" \\\\":""));
+  }
+  return out.join("\n");
+}
 function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,onRefresh}){
   const[templates,setTemplates]=useState([]);
   const[selTpl,setSelTpl]=useState(null);
@@ -2369,6 +2397,8 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
   const[mode,setMode]=useState(content?.jira_epic_key?"subtask":"epic");
   const[epicSummary,setEpicSummary]=useState("");
   const[epicDesc,setEpicDesc]=useState("");
+  // Phase 6 P1: Sub-Task 부모 지정 모드. "epic_link" = content.jira_epic_key 에 연결, "parent_task" = 개별 task 의 부모 task.jira_url 에 연결
+  const[subParentMode,setSubParentMode]=useState(content?.jira_epic_key?"epic_link":"parent_task");
 
   useEffect(()=>{db.jiraTemplates().then(ts=>{setTemplates(ts||[]);if(ts?.length)setSelTpl(ts[0])})},[]);
 
@@ -2382,6 +2412,10 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
   const tm=TM[content?.type]||{};
   const ver=versions?.find(v=>v.id===content?.version_id);
   const trackerUrl="https://got-contentsdesign-pipeline-er8j.vercel.app/?content="+content?.id;
+
+  // Phase 6 P1: content.owner (한글 이름) 기반 reporter 조회 + 기본 juna
+  const ownerWorker=useMemo(()=>workers?.find(x=>x.name===content?.owner),[workers,content?.owner]);
+  const reporterUsername=ownerWorker?.jira_account_id||"juna";
 
   const buildVars=(task)=>{
     const w=workers?.find(x=>x.id===task.assignee_id);
@@ -2397,9 +2431,11 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
       estimated_days:task.days||task.estimated_days||"",
       part_label:PART_LABELS[w?.part_id]||"",
       assignee_name:w?.name||"",
+      assignee_username:w?.jira_account_id||"",
       doc_link:content?.doc_url||"",
       tracker_url:trackerUrl,
-      owner:content?.owner||""
+      owner:content?.owner||"",
+      owner_username:reporterUsername
     };
   };
 
@@ -2420,14 +2456,16 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
       // content-level Epic 생성 요청 로그 1건
       const defSummary="[Epic] "+(content?.name||"")+" ("+(tm.l||content?.type||"")+")";
       const defDesc="## 콘텐츠\n"+(content?.name||"")+" ("+(tm.l||content?.type||"")+")\n\n## 목표 버전\n"+(ver?.label||"")+" ("+(ver?.target_date||"")+")\n\n## 파이프라인 트래커\n"+trackerUrl+"\n\n---\n_파이프라인 트래커에서 자동 생성 요청된 Epic._";
+      const rawDesc=epicDesc||defDesc;
       const payload={
         fields:{
           project:{key:selTpl?.project_key||"PROJECTT"},
           issuetype:{name:"Epic"},
           summary:epicSummary||defSummary,
-          description:epicDesc||defDesc,
+          description:formatJiraDescription(rawDesc),
           priority:{name:selTpl?.priority||"Medium"},
-          labels:["auto-generated","from-tracker","epic"]
+          labels:["auto-generated","from-tracker","epic"],
+          reporter:{name:reporterUsername}
         }
       };
       await db.addJiraLog({
@@ -2443,21 +2481,49 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
       res.push({task_id:null,title:"[Epic] "+(content?.name||""),payload,status:"pending"});
     }else{
       if(checkedTasks.length===0){setCreating(false);return}
-      if(!content?.jira_epic_key){alert("Sub-Task 생성은 콘텐츠에 Epic 키가 등록된 후 가능합니다.");setCreating(false);return}
+      // Sub-Task 2모드 검증
+      if(subParentMode==="epic_link"&&!content?.jira_epic_key){
+        alert("Epic Link 모드는 콘텐츠에 Epic 키가 등록된 후 가능합니다.\n부모 Task 모드로 전환하거나 Epic 키를 먼저 등록하세요.");
+        setCreating(false);return
+      }
+      if(subParentMode==="parent_task"){
+        const noParent=checkedTasks.filter(t=>{
+          const pid=t.parent_task_id;
+          if(!pid)return true;
+          const pt=(allTasks||[]).find(x=>x.id===pid);
+          return !pt?.jira_url;
+        });
+        if(noParent.length>0){
+          alert("부모 Task 모드: 선택한 "+noParent.length+"건의 태스크에 JIRA 연결된 부모 Task 가 없습니다.\n- 부모 Task 가 먼저 JIRA 에 등록되어야 합니다.");
+          setCreating(false);return
+        }
+      }
       for(const task of checkedTasks){
         const preview=renderPreview(task);
-        const payload={
-          fields:{
-            project:{key:selTpl?.project_key||"PROJECTT"},
-            issuetype:{name:selTpl?.issue_type||"Task"},
-            summary:preview.summary,
-            description:preview.description,
-            priority:{name:selTpl?.priority||"Medium"},
-            labels:selTpl?.labels||["auto-generated","from-tracker"],
-            // customfield_10008 은 JIRA Epic Link 기본 필드. 실제 필드 ID는 JIRA 설정 따라. operator가 환경에 맞게 사용.
-            // target_epic_key 를 별도로 전달하므로 페이로드 내에는 힌트만.
-          }
+        const w=workers?.find(x=>x.id===task.assignee_id);
+        const assigneeUsername=w?.jira_account_id||"";
+        // 부모 지정 방식 결정
+        let targetEpic=null, parentTaskKey=null;
+        if(subParentMode==="epic_link"){
+          targetEpic=content.jira_epic_key;
+        }else{
+          const pt=(allTasks||[]).find(x=>x.id===task.parent_task_id);
+          // jira_url 마지막 세그먼트 = key (예: .../PROJECTT-38075 -> PROJECTT-38075)
+          parentTaskKey=pt?.jira_url?String(pt.jira_url).split("/").pop():null;
+        }
+        const fields={
+          project:{key:selTpl?.project_key||"PROJECTT"},
+          issuetype:{name: subParentMode==="parent_task"?"Sub-Task":(selTpl?.issue_type||"Task")},
+          summary:preview.summary,
+          description:formatJiraDescription(preview.description),
+          priority:{name:selTpl?.priority||"Medium"},
+          labels:selTpl?.labels||["auto-generated","from-tracker"],
+          reporter:{name:reporterUsername}
         };
+        if(assigneeUsername)fields.assignee={name:assigneeUsername};
+        if(parentTaskKey)fields.parent={key:parentTaskKey};
+        // Epic Link 은 customfield_10008 (JIRA 설정별 상이). operator 가 최종 주입
+        const payload={fields,_subtask_mode:subParentMode};
         await db.addJiraLog({
           task_id:task.id,
           content_id:content.id,
@@ -2466,7 +2532,7 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
           payload:payload,
           status:"pending",
           operation_type:"create_subtask",
-          target_epic_key:content.jira_epic_key
+          target_epic_key:targetEpic
         });
         res.push({task_id:task.id,title:task.title,payload,status:"pending"});
       }
@@ -2510,12 +2576,29 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
         {/* Mode tabs - Phase 6 */}
         <div className="tab-row" style={{marginBottom:10}}>
           <button className={mode==="epic"?"on":""} onClick={()=>setMode("epic")}>🎯 Epic 생성</button>
-          <button className={mode==="subtask"?"on":""} onClick={()=>setMode("subtask")} disabled={!content?.jira_epic_key}
-            title={content?.jira_epic_key?"":"Epic 키 등록 후 가능"}>📌 Sub-Task 생성</button>
+          <button className={mode==="subtask"?"on":""} onClick={()=>setMode("subtask")}>📌 Sub-Task 생성</button>
           <span style={{marginLeft:"auto",fontSize:11,color:"var(--t4)",alignSelf:"center"}}>
             {content?.jira_epic_key?<>Epic: <span style={{color:"var(--ac)",fontWeight:600}}>{content.jira_epic_key}</span></>:<span style={{color:"var(--or)"}}>Epic 미등록</span>}
           </span>
         </div>
+
+        {/* Sub-Task 부모 지정 모드 - Phase 6 P1 */}
+        {mode==="subtask"&&<div style={{marginBottom:10,padding:"8px 10px",background:"var(--bg3)",borderRadius:6,border:"1px solid var(--bd)"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"var(--t2)",marginBottom:6}}>부모 지정 방식</div>
+          <div style={{display:"flex",gap:16,fontSize:12}}>
+            <label style={{display:"flex",alignItems:"center",gap:4,cursor: content?.jira_epic_key?"pointer":"not-allowed",opacity:content?.jira_epic_key?1:0.4}}>
+              <input type="radio" name="subParentMode" value="epic_link" checked={subParentMode==="epic_link"}
+                disabled={!content?.jira_epic_key}
+                onChange={()=>setSubParentMode("epic_link")}/>
+              🎯 Epic Link {content?.jira_epic_key?<span style={{color:"var(--t4)",fontSize:11}}>({content.jira_epic_key})</span>:<span style={{color:"var(--or)",fontSize:11}}>(Epic 키 필요)</span>}
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
+              <input type="radio" name="subParentMode" value="parent_task" checked={subParentMode==="parent_task"}
+                onChange={()=>setSubParentMode("parent_task")}/>
+              📋 부모 Task <span style={{color:"var(--t4)",fontSize:11}}>(각 태스크의 parent_task_id 의 JIRA)</span>
+            </label>
+          </div>
+        </div>}
 
         {/* Template selector */}
         <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
@@ -2569,14 +2652,25 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
         {mode==="subtask"&&(eligibleTasks.length>0?<>
           <div style={{fontSize:11,fontWeight:600,color:"var(--t2)",marginBottom:6}}>생성 대상 ({checkedTasks.length}/{eligibleTasks.length}건 선택)</div>
           <div style={{marginBottom:12,maxHeight:140,overflow:"auto",border:"1px solid var(--bd)",borderRadius:6,padding:6}}>
-            {eligibleTasks.map((t,i)=><label key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:12,cursor:"pointer",
-              background:curTask?.id===t.id?"var(--ac-bg)":"transparent",borderRadius:4,paddingLeft:4}}
-              onClick={()=>setPreviewIdx(eligibleTasks.indexOf(t))}>
-              <input type="checkbox" checked={!!checked[t.id]} onChange={e=>{setChecked(p=>({...p,[t.id]:e.target.checked}))}} style={{accentColor:"var(--ac)"}}/>
-              <D s={t.status}/>
-              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
-              <span style={{fontSize:10,color:"var(--t4)"}}>{t.days||"?"}일</span>
-            </label>)}
+            {eligibleTasks.map((t,i)=>{
+              const w=workers?.find(x=>x.id===t.assignee_id);
+              const hasJiraUser=!!w?.jira_account_id;
+              const pt=(allTasks||[]).find(x=>x.id===t.parent_task_id);
+              const parentKey=pt?.jira_url?String(pt.jira_url).split("/").pop():null;
+              const parentMissing=subParentMode==="parent_task"&&!parentKey;
+              return<label key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:12,cursor:"pointer",
+                background:curTask?.id===t.id?"var(--ac-bg)":"transparent",borderRadius:4,paddingLeft:4}}
+                onClick={()=>setPreviewIdx(eligibleTasks.indexOf(t))}>
+                <input type="checkbox" checked={!!checked[t.id]} onChange={e=>{setChecked(p=>({...p,[t.id]:e.target.checked}))}} style={{accentColor:"var(--ac)"}}/>
+                <D s={t.status}/>
+                <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
+                {!hasJiraUser&&w&&<span style={{fontSize:10,color:"var(--or)"}} title={"JIRA username 미매핑: "+w.name}>⚠️</span>}
+                {subParentMode==="parent_task"&&(parentKey?
+                  <span style={{fontSize:10,color:"var(--gn)"}} title={"부모: "+parentKey}>▶{parentKey.split("-").pop()}</span>
+                  :<span style={{fontSize:10,color:"var(--rd)"}} title="부모 Task 의 JIRA 연결 없음">✕</span>)}
+                <span style={{fontSize:10,color:"var(--t4)"}}>{t.days||"?"}일</span>
+              </label>;
+            })}
           </div>
 
           {/* Preview for selected task */}
@@ -2590,12 +2684,27 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
               </div>}
             </div>
             <div style={{padding:12}}>
-              <div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:"6px 8px",fontSize:12,marginBottom:10}}>
-                <span style={{color:"var(--t4)",fontWeight:500}}>Project</span><span>{selTpl?.project_key||"PROJECTT"}</span>
-                <span style={{color:"var(--t4)",fontWeight:500}}>Type</span><span>{selTpl?.issue_type||"Task"}</span>
-                <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{selTpl?.priority||"Medium"}</span>
-                <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{(selTpl?.labels||[]).join(", ")}</span>
-              </div>
+              {(()=>{
+                const w=workers?.find(x=>x.id===curTask.assignee_id);
+                const pt=(allTasks||[]).find(x=>x.id===curTask.parent_task_id);
+                const parentKey=pt?.jira_url?String(pt.jira_url).split("/").pop():null;
+                const typeLabel=subParentMode==="parent_task"?"Sub-Task":(selTpl?.issue_type||"Task");
+                const parentHint=subParentMode==="parent_task"
+                  ?(parentKey?parentKey:<span style={{color:"var(--rd)"}}>미연결</span>)
+                  :(content?.jira_epic_key||<span style={{color:"var(--or)"}}>Epic 미등록</span>);
+                return<div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:"6px 8px",fontSize:12,marginBottom:10}}>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Project</span><span>{selTpl?.project_key||"PROJECTT"}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Type</span><span>{typeLabel}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Parent</span><span>{parentHint}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Assignee</span>
+                  <span>{w?.jira_account_id
+                    ?<>{w.jira_account_id} <span style={{color:"var(--t4)",fontSize:11}}>({w.name})</span></>
+                    :<span style={{color:"var(--or)"}}>⚠️ {w?.name||"미배정"} - JIRA username 미매핑</span>}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Reporter</span><span>{reporterUsername} <span style={{color:"var(--t4)",fontSize:11}}>({content?.owner||"기본 juna"})</span></span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{selTpl?.priority||"Medium"}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{(selTpl?.labels||[]).join(", ")}</span>
+                </div>;
+              })()}
               <div style={{marginBottom:8}}>
                 <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>Summary</label>
                 <input value={curPreview.summary} onChange={e=>setEditSummary(p=>({...p,[curTask.id]:e.target.value}))}
@@ -2617,10 +2726,19 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
             {creating?"생성 중...":"🎯 Epic 생성 요청"}
           </button>
           :
-          <button className="bt bt-g" disabled={creating||checkedTasks.length===0||!content?.jira_epic_key} onClick={handleCreate}
-            title={!content?.jira_epic_key?"Epic 키가 등록되어야 합니다":""}>
-            {creating?"생성 중...":"📌 Sub-Task 생성 요청 ("+checkedTasks.length+"건)"}
-          </button>
+          (()=>{
+            const epicModeBlocked=subParentMode==="epic_link"&&!content?.jira_epic_key;
+            const parentBlocked=subParentMode==="parent_task"&&checkedTasks.some(t=>{
+              const pt=(allTasks||[]).find(x=>x.id===t.parent_task_id);
+              return !pt?.jira_url;
+            });
+            const disabled=creating||checkedTasks.length===0||epicModeBlocked||parentBlocked;
+            const title=epicModeBlocked?"Epic 키가 등록되어야 합니다"
+              :parentBlocked?"일부 태스크의 부모 Task 에 JIRA 가 연결되어 있지 않습니다":"";
+            return<button className="bt bt-g" disabled={disabled} onClick={handleCreate} title={title}>
+              {creating?"생성 중...":"📌 Sub-Task 생성 요청 ("+checkedTasks.length+"건, "+(subParentMode==="parent_task"?"부모 Task":"Epic Link")+")"}
+            </button>;
+          })()
         }
       </div>
     </div>
