@@ -257,7 +257,7 @@ parent_task 검증 Supabase 잔존: log #3 DELETE, task #2418 DELETE 완료.
 - 참고: customfield_13100 = Sprint (P3 Agile API 트랙용)
 
 **처리 흐름**:
-1. `create_epic`: payload.fields 에 `customfield_13102=summary` 자동 주입 → POST `/rest/api/2/issue` → `contents.jira_epic_key`/`jira_epic_url` 백필
+1. `create_epic`: payload.fields 에 `customfield_13102=summary` 자동 주입 + assignee 미설정 시 `juna` 기본값 (JIRA 자동 배정 회피) → POST `/rest/api/2/issue` → `contents.jira_epic_key`/`jira_epic_url` 백필
 2. `create_subtask` (parent_task 모드): payload 그대로 POST → `tasks.jira_url` 백필
 3. `create_subtask` (epic_link 모드): POST → 후처리 PUT `/rest/api/2/issue/{key}` `{customfield_13101: target_epic_key}` → `tasks.jira_url` 백필
 4. 모든 case: payload 의 `reporter.name` 이 인증 사용자와 다르면 후처리 PUT 으로 reporter 변경 (권한 부족 시 경고만 남기고 계속)

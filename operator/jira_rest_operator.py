@@ -123,6 +123,10 @@ def handle_create_epic(creds, log, dry_run):
     fields[JIRA_EPIC_NAME_FIELD] = summary  # Epic Name = summary 기본
     fields["issuetype"] = {"name": "Epic"}
 
+    # Epic assignee 미설정 시 juna 기본값 (JIRA 자동 배정 회피)
+    if not (fields.get("assignee") or {}).get("name"):
+        fields["assignee"] = {"name": "juna"}
+
     desired_reporter = (fields.get("reporter") or {}).get("name")
     fields.pop("reporter", None)  # 인증 사용자로 일단 생성, 후처리 PUT
 
@@ -130,6 +134,7 @@ def handle_create_epic(creds, log, dry_run):
     if dry_run:
         print(f"  [DRY] POST /rest/api/2/issue (Epic) summary={summary!r}")
         print(f"        {JIRA_EPIC_NAME_FIELD}={summary!r}")
+        print(f"        assignee={fields['assignee']['name']}")
         return {"key": "DRY-EPIC-0", "url": "https://jira.nmn.io/browse/DRY-EPIC-0"}
 
     res = jira_request(creds, "POST", "/rest/api/2/issue", create_body)
