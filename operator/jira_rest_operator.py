@@ -41,7 +41,7 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 JIRA_BASE = "https://jira.nmn.io"
 JIRA_EPIC_NAME_FIELD = os.environ.get("JIRA_EPIC_NAME_FIELD", "customfield_13102")
-JIRA_EPIC_LINK_FIELD = os.environ.get("JIRA_EPIC_LINK_FIELD", "customfield_10008")
+JIRA_EPIC_LINK_FIELD = os.environ.get("JIRA_EPIC_LINK_FIELD", "customfield_13101")
 
 OPERATOR_DIR = Path(__file__).resolve().parent
 CREDS_FILE = OPERATOR_DIR / ".jira_creds.json"

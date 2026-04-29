@@ -251,14 +251,15 @@ parent_task 검증 Supabase 잔존: log #3 DELETE, task #2418 DELETE 완료.
 - env 한 가지 빠지면 파일 fallback 시도
 
 **Custom field override (env)**:
-- `JIRA_EPIC_NAME_FIELD` 기본 `customfield_13102`
-- `JIRA_EPIC_LINK_FIELD` 기본 `customfield_10008`
-- 향후 JIRA 관리자 변경 시 코드 수정 없이 env 로 교체
+- `JIRA_EPIC_NAME_FIELD` 기본 `customfield_13102` (jira.nmn.io 실측)
+- `JIRA_EPIC_LINK_FIELD` 기본 `customfield_13101` (jira.nmn.io 실측. JIRA Cloud 기본값 customfield_10008 과 다름)
+- 신규 JIRA 인스턴스 사용 시 `GET /rest/api/2/field` 로 ID 확인 후 env 로 override
+- 참고: customfield_13100 = Sprint (P3 Agile API 트랙용)
 
 **처리 흐름**:
 1. `create_epic`: payload.fields 에 `customfield_13102=summary` 자동 주입 → POST `/rest/api/2/issue` → `contents.jira_epic_key`/`jira_epic_url` 백필
 2. `create_subtask` (parent_task 모드): payload 그대로 POST → `tasks.jira_url` 백필
-3. `create_subtask` (epic_link 모드): POST → 후처리 PUT `/rest/api/2/issue/{key}` `{customfield_10008: target_epic_key}` → `tasks.jira_url` 백필
+3. `create_subtask` (epic_link 모드): POST → 후처리 PUT `/rest/api/2/issue/{key}` `{customfield_13101: target_epic_key}` → `tasks.jira_url` 백필
 4. 모든 case: payload 의 `reporter.name` 이 인증 사용자와 다르면 후처리 PUT 으로 reporter 변경 (권한 부족 시 경고만 남기고 계속)
 
 **CLI 옵션**:
@@ -268,18 +269,33 @@ parent_task 검증 Supabase 잔존: log #3 DELETE, task #2418 DELETE 완료.
 
 **검증 (2026-04-28 dry-run smoketest)**:
 - 합성 pending log 2건 (parent_task / epic_link) 삽입 → dry-run 양 모드 분기 정상 → log 삭제
-- 실제 JIRA 호출 검증은 JIRA_PASS env 또는 creds 파일 설정 후 실행
+
+**E2E 실전 검증 (2026-04-28 Round 1+2)**:
+- **MCP 한계 1 우회 (reporter)**: log#7 → PROJECTT-39403 생성, payload reporter=hycho → JIRA 실제 reporter=hycho 확인 ✓
+- **MCP 한계 2 우회 (Epic 생성)**: log#8 → PROJECTT-39404 (Epic) 생성, customfield_13102 (Epic Name) 자동 주입 정상 ✓
+- **MCP 한계 3 우회 (Epic Link)**: log#9 → PROJECTT-39405 (Task) 생성, 처음엔 customfield_10008 사용으로 400 에러 → `GET /rest/api/2/field` 로 실제 ID 조사 → `customfield_13101` 로 코드 수정 후 PUT 성공, Epic Link → PROJECTT-39404 정상 설정 ✓
+
+**신규 운영 한계 발견**:
+- **JIRA REST DELETE 권한 부족 (403)**: `DELETE /rest/api/2/issue/{key}` 시 `"You do not have permission to delete issues in this project."` 응답. test artifact 자동 정리 불가 → 사용자 수동 삭제 필요
+- jira.nmn.io 의 Epic Link customfield ID 가 JIRA Cloud 기본값(10008)과 다름 → 실측 13101. 다른 JIRA Server 인스턴스마다 ID 달라질 수 있어 env 로 override 가능하게 설계됨
 
 **MCP 와의 차이**:
 | 항목 | MCP (`mcp__jira__jira_create_issue`) | REST (`jira_rest_operator.py`) |
 |------|---|---|
 | reporter 지정 | 미지원 | 후처리 PUT 으로 가능 (권한 필요) |
 | Epic 생성 (Epic Name) | 400 | `customfield_13102` 자동 주입 |
-| Epic Link (customfield_10008) | 미지원 | 후처리 PUT 으로 가능 |
+| Epic Link (customfield_13101) | 미지원 | 후처리 PUT 으로 가능 |
 | 자격 증명 관리 | MCP 인증 (juna 고정) | env / file (사용자 지정) |
 | CORS | 영향 없음 (서버측) | 영향 없음 (서버측, 같은 패턴) |
 | `_subtask_mode` 분기 | 후처리 분기 불가 | 모드별 자동 분기 |
 
 **잔여 한계**:
 - reporter 변경은 JIRA 권한에 따라 실패 가능 → 운영 중 권한 부족 발생하면 관리자에게 grant 요청
+- JIRA REST DELETE 권한 부족 → test artifact 정리는 수동
 - Sprint 자동 투입 (Agile API `/rest/agile/1.0/...`) 은 P3 별도 트랙 (현재는 수동)
+
+**JIRA 측 수동 정리 필요**:
+- PROJECTT-39403 (test Sub-Task, parent=PROJECTT-38075, reporter=hycho)
+- PROJECTT-39404 (test Epic)
+- PROJECTT-39405 (test Task, Epic Link → PROJECTT-39404)
+- 라벨 `test-p2` 로 식별 가능
