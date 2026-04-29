@@ -238,3 +238,48 @@ parent_task 검증 Supabase 잔존: log #3 DELETE, task #2418 DELETE 완료.
 - parent_task 모드 우선 (기존 400+ task 재활용)
 - Epic 신규는 기획자 수동 생성 후 UI [🔗 기존 Epic 연결] 로 등록
 - 실사용 때 MCP 한계가 병목이 되면 JIRA REST API 직접 호출 operator 경로 신설
+
+### 2026-04-28 - P2 진입 - REST API 직접 operator 신설
+
+**배경**: P1 검증 결과 MCP 한계 3종 (reporter / Epic Name / Epic Link) 으로 인해 epic_link 모드 자동화 차단 + Epic 자동 생성 차단. REST 직접 호출 경로로 우회.
+
+**산출물**: `operator/jira_rest_operator.py` (단일 파일, urllib stdlib only)
+
+**자격 증명**:
+- 우선순위: env (`JIRA_USER` / `JIRA_PASS`) > 파일 (`operator/.jira_creds.json`)
+- 파일 형식: `{"user":"juna","pass":"<password-or-PAT>"}` (gitignored)
+- env 한 가지 빠지면 파일 fallback 시도
+
+**Custom field override (env)**:
+- `JIRA_EPIC_NAME_FIELD` 기본 `customfield_13102`
+- `JIRA_EPIC_LINK_FIELD` 기본 `customfield_10008`
+- 향후 JIRA 관리자 변경 시 코드 수정 없이 env 로 교체
+
+**처리 흐름**:
+1. `create_epic`: payload.fields 에 `customfield_13102=summary` 자동 주입 → POST `/rest/api/2/issue` → `contents.jira_epic_key`/`jira_epic_url` 백필
+2. `create_subtask` (parent_task 모드): payload 그대로 POST → `tasks.jira_url` 백필
+3. `create_subtask` (epic_link 모드): POST → 후처리 PUT `/rest/api/2/issue/{key}` `{customfield_10008: target_epic_key}` → `tasks.jira_url` 백필
+4. 모든 case: payload 의 `reporter.name` 이 인증 사용자와 다르면 후처리 PUT 으로 reporter 변경 (권한 부족 시 경고만 남기고 계속)
+
+**CLI 옵션**:
+- `--dry-run`: 실제 호출 없이 plan 출력 (자격 증명 없어도 실행 가능)
+- `--log-id N`: 특정 log 1건만 처리
+- `--limit N`: 최대 N건 처리
+
+**검증 (2026-04-28 dry-run smoketest)**:
+- 합성 pending log 2건 (parent_task / epic_link) 삽입 → dry-run 양 모드 분기 정상 → log 삭제
+- 실제 JIRA 호출 검증은 JIRA_PASS env 또는 creds 파일 설정 후 실행
+
+**MCP 와의 차이**:
+| 항목 | MCP (`mcp__jira__jira_create_issue`) | REST (`jira_rest_operator.py`) |
+|------|---|---|
+| reporter 지정 | 미지원 | 후처리 PUT 으로 가능 (권한 필요) |
+| Epic 생성 (Epic Name) | 400 | `customfield_13102` 자동 주입 |
+| Epic Link (customfield_10008) | 미지원 | 후처리 PUT 으로 가능 |
+| 자격 증명 관리 | MCP 인증 (juna 고정) | env / file (사용자 지정) |
+| CORS | 영향 없음 (서버측) | 영향 없음 (서버측, 같은 패턴) |
+| `_subtask_mode` 분기 | 후처리 분기 불가 | 모드별 자동 분기 |
+
+**잔여 한계**:
+- reporter 변경은 JIRA 권한에 따라 실패 가능 → 운영 중 권한 부족 발생하면 관리자에게 grant 요청
+- Sprint 자동 투입 (Agile API `/rest/agile/1.0/...`) 은 P3 별도 트랙 (현재는 수동)

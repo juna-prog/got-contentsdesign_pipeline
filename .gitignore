@@ -1,3 +1,5 @@
 backup/
 *.log
 .DS_Store
+.jira_creds.json
+operator/.jira_creds.json
