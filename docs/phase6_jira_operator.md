@@ -299,3 +299,46 @@ parent_task 검증 Supabase 잔존: log #3 DELETE, task #2418 DELETE 완료.
 - PROJECTT-39404 (test Epic)
 - PROJECTT-39405 (test Task, Epic Link → PROJECTT-39404)
 - 라벨 `test-p2` 로 식별 가능
+
+### 2026-04-30 - P2 stage B - SprintConfig + WorkTypes + payload 보강
+
+**스키마 변경 (v17)**: `migrations/v17_sprint_worktypes.sql`
+
+신규 테이블:
+- `sprint_config(version_id UNIQUE, jira_sprint_id, jira_sprint_name, jira_board_id, fix_version, default_components[], default_labels[], default_priority, is_active, notes)`
+- `work_types(work_type_key UNIQUE, label, part_id, default_est_days, default_priority, default_components[], default_labels[], default_action_verb, sort_order, is_active)`
+
+확장:
+- `jira_templates.default_fix_versions TEXT[]`
+- `jira_templates.default_components TEXT[]`
+
+뷰: `v_jira_payload_defaults` (versions × sprint_config 머지뷰)
+
+Seed:
+- `work_types` 14건: art_char_concept~art_ta + cutscene + design_doc/data/ip_review/qa/polish/fun_review
+- `sprint_config` UP01 1건 (fix_version="[T] 업데이트")
+
+**적용 방법**: Supabase 웹 SQL editor 에서 `v17_sprint_worktypes.sql` 전체 실행.
+
+**UI 변경 (index.html)**:
+
+신규 db helper:
+- `db.workTypes()` → `work_types?is_active=eq.true`
+- `db.sprintConfigs()` → `sprint_config?is_active=eq.true`
+
+`JiraPreviewModal` 머지 로직 (`mergeFields(task, baseLabels)`):
+- priority 우선순위: `task.priority` > `sprint_config.default_priority` > `work_type.default_priority` > `jira_templates.priority` > "Medium"
+- labels: `jira_templates.labels` ∪ `work_type.default_labels` ∪ `sprint_config.default_labels` ∪ baseLabels (unique 보존)
+- components: `jira_templates.default_components` ∪ `work_type.default_components` ∪ `sprint_config.default_components` (unique → `[{name}]`)
+- fixVersions: `sprint_config.fix_version` 우선, 없으면 `jira_templates.default_fix_versions` (unique → `[{name}]`)
+
+`resolveWorkType(task)`: `tasks.part_id` 매칭 후, 동일 part 내에 여러 work_type 이 있으면 `tasks.action_verb` 로 추가 매칭.
+
+Epic / Sub-Task 모두 동일 `mergeFields` 통해 payload 구성. 미리보기 grid 에 sprint config 출처 + Work Type 권장 일수 + Components / Fix Versions 표시.
+
+**operator 무수정**: `payload.fields` 그대로 POST 하므로 components/fixVersions 자동 전달 (JIRA REST 표준 필드).
+
+**잔여 (별도 트랙)**:
+- Sprint 자동 투입 (`/rest/agile/1.0/board/1221/sprint`) — P3 (스프린트 자동 투입은 사용자 합의로 추후 설계)
+- 태스크 import / TemplateApplyModal 에서 work_type 기반 estimated_days 자동 채움 (현재는 미리보기에 권장값만 표시)
+- workers 편집 UI (신규 입사자/퇴사자 대응)

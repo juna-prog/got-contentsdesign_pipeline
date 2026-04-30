@@ -83,7 +83,7 @@ const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
 const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[])};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[])};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -2387,6 +2387,8 @@ function formatJiraDescription(text){
 function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,onRefresh}){
   const[templates,setTemplates]=useState([]);
   const[selTpl,setSelTpl]=useState(null);
+  const[workTypes,setWorkTypes]=useState([]);
+  const[sprintCfg,setSprintCfg]=useState(null);
   const[checked,setChecked]=useState({});
   const[creating,setCreating]=useState(false);
   const[results,setResults]=useState(null);
@@ -2401,6 +2403,14 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
   const[subParentMode,setSubParentMode]=useState(content?.jira_epic_key?"epic_link":"parent_task");
 
   useEffect(()=>{db.jiraTemplates().then(ts=>{setTemplates(ts||[]);if(ts?.length)setSelTpl(ts[0])})},[]);
+  useEffect(()=>{db.workTypes().then(ws=>setWorkTypes(ws||[]))},[]);
+  useEffect(()=>{
+    if(!content?.version_id){setSprintCfg(null);return}
+    db.sprintConfigs().then(cs=>{
+      const m=(cs||[]).find(c=>c.version_id===content.version_id);
+      setSprintCfg(m||null);
+    });
+  },[content?.version_id]);
 
   const eligibleTasks=useMemo(()=>(allTasks||[]).filter(t=>!t.jira_url),[allTasks]);
   const linkedTasks=useMemo(()=>(allTasks||[]).filter(t=>t.jira_url),[allTasks]);
@@ -2448,6 +2458,44 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
     };
   };
 
+  // Phase 6 P2-B: payload 보강 헬퍼 (priority/labels/components/fixVersions 머지)
+  // 우선순위: task 명시값 > sprint_config > work_type > jira_template
+  const uniq=(arr)=>Array.from(new Set((arr||[]).filter(Boolean)));
+  const resolveWorkType=(task)=>{
+    if(!task)return null;
+    const byPart=(workTypes||[]).filter(w=>w.part_id===task.part_id);
+    if(byPart.length===1)return byPart[0];
+    if(task.action_verb){
+      const m=byPart.find(w=>w.default_action_verb===task.action_verb);
+      if(m)return m;
+    }
+    return byPart[0]||null;
+  };
+  const mergeFields=(task,baseLabels)=>{
+    const wt=resolveWorkType(task);
+    const priority=
+      (task&&task.priority)||
+      (sprintCfg&&sprintCfg.default_priority)||
+      (wt&&wt.default_priority)||
+      (selTpl?.priority)||"Medium";
+    const labels=uniq([
+      ...(selTpl?.labels||[]),
+      ...(wt?.default_labels||[]),
+      ...(sprintCfg?.default_labels||[]),
+      ...(baseLabels||[])
+    ]);
+    const components=uniq([
+      ...(selTpl?.default_components||[]),
+      ...(wt?.default_components||[]),
+      ...(sprintCfg?.default_components||[])
+    ]).map(n=>({name:n}));
+    const fixVersions=uniq([
+      ...(sprintCfg?.fix_version?[sprintCfg.fix_version]:[]),
+      ...(selTpl?.default_fix_versions||[])
+    ]).map(n=>({name:n}));
+    return{priority:{name:priority},labels,components,fixVersions};
+  };
+
   const handleCreate=async()=>{
     if(!user||(!user.is_lead&&!user.is_team_lead)){alert("파트장 권한 필요");return}
     setCreating(true);
@@ -2457,17 +2505,19 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
       const defSummary="[Epic] "+(content?.name||"")+" ("+(tm.l||content?.type||"")+")";
       const defDesc="## 콘텐츠\n"+(content?.name||"")+" ("+(tm.l||content?.type||"")+")\n\n## 목표 버전\n"+(ver?.label||"")+" ("+(ver?.target_date||"")+")\n\n## 파이프라인 트래커\n"+trackerUrl+"\n\n---\n_파이프라인 트래커에서 자동 생성 요청된 Epic._";
       const rawDesc=epicDesc||defDesc;
-      const payload={
-        fields:{
-          project:{key:selTpl?.project_key||"PROJECTT"},
-          issuetype:{name:"Epic"},
-          summary:epicSummary||defSummary,
-          description:formatJiraDescription(rawDesc),
-          priority:{name:selTpl?.priority||"Medium"},
-          labels:["auto-generated","from-tracker","epic"],
-          reporter:{name:reporterUsername}
-        }
+      const merged=mergeFields(null,["epic"]);
+      const fields={
+        project:{key:selTpl?.project_key||"PROJECTT"},
+        issuetype:{name:"Epic"},
+        summary:epicSummary||defSummary,
+        description:formatJiraDescription(rawDesc),
+        priority:merged.priority,
+        labels:merged.labels.length?merged.labels:["auto-generated","from-tracker","epic"],
+        reporter:{name:reporterUsername}
       };
+      if(merged.components.length)fields.components=merged.components;
+      if(merged.fixVersions.length)fields.fixVersions=merged.fixVersions;
+      const payload={fields};
       await db.addJiraLog({
         task_id:null,
         content_id:content.id,
@@ -2511,15 +2561,18 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
           // jira_url 마지막 세그먼트 = key (예: .../PROJECTT-38075 -> PROJECTT-38075)
           parentTaskKey=pt?.jira_url?String(pt.jira_url).split("/").pop():null;
         }
+        const merged=mergeFields(task,[]);
         const fields={
           project:{key:selTpl?.project_key||"PROJECTT"},
           issuetype:{name: subParentMode==="parent_task"?"Sub-Task":(selTpl?.issue_type||"Task")},
           summary:preview.summary,
           description:formatJiraDescription(preview.description),
-          priority:{name:selTpl?.priority||"Medium"},
-          labels:selTpl?.labels||["auto-generated","from-tracker"],
+          priority:merged.priority,
+          labels:merged.labels.length?merged.labels:["auto-generated","from-tracker"],
           reporter:{name:reporterUsername}
         };
+        if(merged.components.length)fields.components=merged.components;
+        if(merged.fixVersions.length)fields.fixVersions=merged.fixVersions;
         if(assigneeUsername)fields.assignee={name:assigneeUsername};
         if(parentTaskKey)fields.parent={key:parentTaskKey};
         // Epic Link 은 customfield_10008 (JIRA 설정별 상이). operator 가 최종 주입
@@ -2613,16 +2666,23 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
         {mode==="epic"&&(()=>{
           const defSum="[Epic] "+(content?.name||"")+" ("+(tm.l||content?.type||"")+")";
           const defDesc="## 콘텐츠\n"+(content?.name||"")+" ("+(tm.l||content?.type||"")+")\n\n## 목표 버전\n"+(ver?.label||"")+" ("+(ver?.target_date||"")+")\n\n## 파이프라인 트래커\n"+trackerUrl+"\n\n---\n_파이프라인 트래커에서 자동 생성 요청된 Epic._";
+          const m=mergeFields(null,["epic"]);
+          const labelsView=m.labels.length?m.labels.join(", "):"auto-generated, from-tracker, epic";
+          const compView=m.components.map(c=>c.name).join(", ");
+          const fvView=m.fixVersions.map(f=>f.name).join(", ");
           return<div style={{border:"1px solid var(--bd)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
             <div style={{padding:"8px 12px",background:"var(--bg3)",fontSize:11,fontWeight:600,color:"var(--t2)"}}>
               Epic 생성 요청 (operator 처리 후 Epic 키가 콘텐츠에 자동 입력됩니다)
+              {sprintCfg&&<span style={{fontSize:10,color:"var(--t4)",fontWeight:400,marginLeft:8}}>· sprint_config: {sprintCfg.fix_version||sprintCfg.jira_sprint_name||"-"}</span>}
             </div>
             <div style={{padding:12}}>
               <div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:"6px 8px",fontSize:12,marginBottom:10}}>
                 <span style={{color:"var(--t4)",fontWeight:500}}>Project</span><span>{selTpl?.project_key||"PROJECTT"}</span>
                 <span style={{color:"var(--t4)",fontWeight:500}}>Type</span><span>Epic</span>
-                <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{selTpl?.priority||"Medium"}</span>
-                <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>auto-generated, from-tracker, epic</span>
+                <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{m.priority.name}</span>
+                <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{labelsView}</span>
+                {compView&&<><span style={{color:"var(--t4)",fontWeight:500}}>Components</span><span>{compView}</span></>}
+                {fvView&&<><span style={{color:"var(--t4)",fontWeight:500}}>Fix Versions</span><span>{fvView}</span></>}
               </div>
               <div style={{marginBottom:8}}>
                 <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>Summary</label>
@@ -2692,6 +2752,10 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
                 const parentHint=subParentMode==="parent_task"
                   ?(parentKey?parentKey:<span style={{color:"var(--rd)"}}>미연결</span>)
                   :(content?.jira_epic_key||<span style={{color:"var(--or)"}}>Epic 미등록</span>);
+                const m=mergeFields(curTask,[]);
+                const wt=resolveWorkType(curTask);
+                const compView=m.components.map(c=>c.name).join(", ");
+                const fvView=m.fixVersions.map(f=>f.name).join(", ");
                 return<div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:"6px 8px",fontSize:12,marginBottom:10}}>
                   <span style={{color:"var(--t4)",fontWeight:500}}>Project</span><span>{selTpl?.project_key||"PROJECTT"}</span>
                   <span style={{color:"var(--t4)",fontWeight:500}}>Type</span><span>{typeLabel}</span>
@@ -2701,8 +2765,11 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
                     ?<>{w.jira_account_id} <span style={{color:"var(--t4)",fontSize:11}}>({w.name})</span></>
                     :<span style={{color:"var(--or)"}}>⚠️ {w?.name||"미배정"} - JIRA username 미매핑</span>}</span>
                   <span style={{color:"var(--t4)",fontWeight:500}}>Reporter</span><span>{reporterUsername} <span style={{color:"var(--t4)",fontSize:11}}>({content?.owner||"기본 juna"})</span></span>
-                  <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{selTpl?.priority||"Medium"}</span>
-                  <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{(selTpl?.labels||[]).join(", ")}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{m.priority.name}{curTask?.priority&&<span style={{color:"var(--t4)",fontSize:11}}> (task)</span>}</span>
+                  <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{m.labels.join(", ")}</span>
+                  {wt&&<><span style={{color:"var(--t4)",fontWeight:500}}>Work Type</span><span>{wt.label} <span style={{color:"var(--t4)",fontSize:11}}>(권장 {wt.default_est_days||"?"}일)</span></span></>}
+                  {compView&&<><span style={{color:"var(--t4)",fontWeight:500}}>Components</span><span>{compView}</span></>}
+                  {fvView&&<><span style={{color:"var(--t4)",fontWeight:500}}>Fix Versions</span><span>{fvView}</span></>}
                 </div>;
               })()}
               <div style={{marginBottom:8}}>
