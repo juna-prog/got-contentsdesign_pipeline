@@ -348,6 +348,8 @@ ImportModal.run 흐름에 `db.workTypes()` 1회 호출 추가 + 진단 로그 (`
 
 **적용 범위 한계**: v17 seed 의 work_types 는 `art_*`, `cutscene`, `design_*` part_id 만 등록됨. 4파트 (`combat`/`level`/`field`/`quest`) 는 work_type 미정의 → `pickWorkType` null → days 미변경. 4파트도 자동 채움 원하면 work_types seed 확장 필요.
 
+**v17b - default_est_days placeholder 제거 (2026-05-04)**: v17 의 일수값(5/8/3/2/1)은 임의 추정이라 파트장 합의 전엔 자동 채움/권장 표시 비활성. 마이그레이션 `v17b_clear_placeholder_estdays.sql` 적용으로 14건 전부 NULL 처리. 코드는 `wt.default_est_days != null` 가드로 동작 → 자동 채움 미발동 + UI "(권장 N일)" 미표시. 향후 파트장 표준 일수 합의 후 work_type 별 UPDATE 로 복원. 정본 일정은 JIRA 일감에 등록된 시작/종료 일자.
+
 **TemplateApplyModal**: 변경 없음. step.duration 은 템플릿 정의 시 이미 설계자가 정한 값이므로 work_types 우선 적용은 보류.
 
 **잔여 (별도 트랙)**:

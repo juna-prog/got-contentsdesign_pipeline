@@ -2760,7 +2760,7 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
                   <span style={{color:"var(--t4)",fontWeight:500}}>Reporter</span><span>{reporterUsername} <span style={{color:"var(--t4)",fontSize:11}}>({content?.owner||"기본 juna"})</span></span>
                   <span style={{color:"var(--t4)",fontWeight:500}}>Priority</span><span>{m.priority.name}{curTask?.priority&&<span style={{color:"var(--t4)",fontSize:11}}> (task)</span>}</span>
                   <span style={{color:"var(--t4)",fontWeight:500}}>Labels</span><span>{m.labels.join(", ")}</span>
-                  {wt&&<><span style={{color:"var(--t4)",fontWeight:500}}>Work Type</span><span>{wt.label} <span style={{color:"var(--t4)",fontSize:11}}>(권장 {wt.default_est_days||"?"}일)</span></span></>}
+                  {wt&&<><span style={{color:"var(--t4)",fontWeight:500}}>Work Type</span><span>{wt.label}{wt.default_est_days!=null&&<span style={{color:"var(--t4)",fontSize:11}}> (권장 {wt.default_est_days}일)</span>}</span></>}
                   {compView&&<><span style={{color:"var(--t4)",fontWeight:500}}>Components</span><span>{compView}</span></>}
                   {fvView&&<><span style={{color:"var(--t4)",fontWeight:500}}>Fix Versions</span><span>{fvView}</span></>}
                 </div>;
