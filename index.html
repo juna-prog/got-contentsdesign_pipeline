@@ -2461,16 +2461,9 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
   // Phase 6 P2-B: payload 보강 헬퍼 (priority/labels/components/fixVersions 머지)
   // 우선순위: task 명시값 > sprint_config > work_type > jira_template
   const uniq=(arr)=>Array.from(new Set((arr||[]).filter(Boolean)));
-  const resolveWorkType=(task)=>{
-    if(!task)return null;
-    const byPart=(workTypes||[]).filter(w=>w.part_id===task.part_id);
-    if(byPart.length===1)return byPart[0];
-    if(task.action_verb){
-      const m=byPart.find(w=>w.default_action_verb===task.action_verb);
-      if(m)return m;
-    }
-    return byPart[0]||null;
-  };
+  // partId 는 content.source_key 프리픽스로 도출 (tasks 테이블에 part_id 컬럼 없음)
+  const contentPartId=(content?.source_key||"").split("::")[0]||null;
+  const resolveWorkType=(task)=>pickWorkType(workTypes,contentPartId,task?.action_verb);
   const mergeFields=(task,baseLabels)=>{
     const wt=resolveWorkType(task);
     const priority=
@@ -3100,10 +3093,26 @@ const PART_DEFAULT_TYPE={combat:"system",level:"system",field:"field",quest:"sea
 function buildContentPayload(c,now){
   return{name:c.name,type:PART_DEFAULT_TYPE[c.part_id]||"system",gate:c.gate||'G0',version_id:c.version_id||'미정',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,source_key:c.source_key,imported_at:now,priority:2,doc_status:'진행',alert:'none'};
 }
-function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now){
+// Phase 6 P2-B Track 4: work_types 매칭 헬퍼 (import + JIRA preview 공용)
+// part_id 는 source_key 프리픽스로 도출 (tasks 테이블에 part_id 컬럼 없음)
+function pickWorkType(workTypes,partId,actionVerb){
+  if(!partId)return null;
+  const byPart=(workTypes||[]).filter(w=>w.part_id===partId);
+  if(byPart.length===0)return null;
+  if(byPart.length===1)return byPart[0];
+  if(actionVerb){const m=byPart.find(w=>w.default_action_verb===actionVerb);if(m)return m}
+  return byPart[0];
+}
+function buildTaskPayload(t,contentIdByKey,workerByName,parentId,now,workTypes){
   const cid=contentIdByKey.get(t._content_source_key);if(!cid)return null;
   const w=workerByName.get(t.assignee_name);
-  return{content_id:cid,title:t.title,title_object:t.title_object||null,action_verb:t.action_verb||null,region_chapter:t.region_chapter||null,issue_type:t.issue_type||null,priority:t.priority||null,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days:t.days,jira_url:t.jira_url,notes:t.notes,version_id:t.version_id||null,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
+  let days=t.days;
+  if((days==null||days==="")&&workTypes){
+    const partId=(t._content_source_key||t.source_key||"").split("::")[0]||null;
+    const wt=pickWorkType(workTypes,partId,t.action_verb);
+    if(wt&&wt.default_est_days!=null)days=Math.round(Number(wt.default_est_days));
+  }
+  return{content_id:cid,title:t.title,title_object:t.title_object||null,action_verb:t.action_verb||null,region_chapter:t.region_chapter||null,issue_type:t.issue_type||null,priority:t.priority||null,assignee_id:w?w.id:null,related_part:t.related_part,status:t.status,start_date:t.start_date,end_date:t.end_date,days,jira_url:t.jira_url,notes:t.notes,version_id:t.version_id||null,source_key:t.source_key,parent_task_id:parentId,imported_at:now};
 }
 
 function ImportModal({user,workers,onClose,onDone}){
@@ -3167,6 +3176,16 @@ function ImportModal({user,workers,onClose,onDone}){
         if(lead){t.assignee_name=lead.name;t._assignee_names=[lead.name];leadFallbackCount++}
       }
       if(leadFallbackCount>0)console.log(`[import] 미배정 ${leadFallbackCount}건 -> 파트장 자동 할당`);
+      /* Phase 6 P2-B Track 4: work_types 로드 (default_est_days 자동 채움용) */
+      const workTypes=await db.workTypes().catch(()=>[]);
+      let estFillCount=0;
+      for(const t of[...(diff.tAdd||[]),...(diff.tUpd||[])]){
+        if(t.days!=null&&t.days!=="")continue;
+        const partId=(t._content_source_key||t.source_key||"").split("::")[0]||null;
+        const wt=pickWorkType(workTypes,partId,t.action_verb);
+        if(wt&&wt.default_est_days!=null)estFillCount++;
+      }
+      if(estFillCount>0)console.log(`[import] days 미입력 ${estFillCount}건 -> work_types.default_est_days 자동 채움`);
       const now=new Date().toISOString();
       // 1. 신규 콘텐츠
       const insertedC=[];
@@ -3196,15 +3215,15 @@ function ImportModal({user,workers,onClose,onDone}){
       const updChildren=diff.tUpd.filter(t=>t._is_child);
 
       if(newParents.length>0){
-        const payload=newParents.map(t=>buildTaskPayload(t,contentIdByKey,workerByName,null,now)).filter(x=>x);
+        const payload=newParents.map(t=>buildTaskPayload(t,contentIdByKey,workerByName,null,now,workTypes)).filter(x=>x);
         if(payload.length>0){const res=await db.bulkTasks(payload);for(const r of(res||[]))taskIdByKey.set(r.source_key,r.id)}
       }
-      for(const t of updParents){const p=buildTaskPayload(t,contentIdByKey,workerByName,null,now);if(p)await db.updTask(t._id,p)}
+      for(const t of updParents){const p=buildTaskPayload(t,contentIdByKey,workerByName,null,now,workTypes);if(p)await db.updTask(t._id,p)}
       if(newChildren.length>0){
-        const payload=newChildren.map(t=>{const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;return buildTaskPayload(t,contentIdByKey,workerByName,pid,now)}).filter(x=>x);
+        const payload=newChildren.map(t=>{const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;return buildTaskPayload(t,contentIdByKey,workerByName,pid,now,workTypes)}).filter(x=>x);
         if(payload.length>0)await db.bulkTasks(payload);
       }
-      for(const t of updChildren){const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;const p=buildTaskPayload(t,contentIdByKey,workerByName,pid,now);if(p)await db.updTask(t._id,p)}
+      for(const t of updChildren){const pid=t._parent_source_key?taskIdByKey.get(t._parent_source_key):null;const p=buildTaskPayload(t,contentIdByKey,workerByName,pid,now,workTypes);if(p)await db.updTask(t._id,p)}
 
       // Sync task_assignees junction table for multi-assignee tasks
       const allParsedTasks=[...diff.tAdd,...diff.tUpd];

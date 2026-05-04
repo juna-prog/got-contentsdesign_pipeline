@@ -332,13 +332,25 @@ Seed:
 - components: `jira_templates.default_components` ∪ `work_type.default_components` ∪ `sprint_config.default_components` (unique → `[{name}]`)
 - fixVersions: `sprint_config.fix_version` 우선, 없으면 `jira_templates.default_fix_versions` (unique → `[{name}]`)
 
-`resolveWorkType(task)`: `tasks.part_id` 매칭 후, 동일 part 내에 여러 work_type 이 있으면 `tasks.action_verb` 로 추가 매칭.
+`resolveWorkType(task)`: `content.source_key` 프리픽스로 partId 도출 후, 동일 part 내에 여러 work_type 이 있으면 `task.action_verb` 로 추가 매칭. (tasks 테이블에 part_id 컬럼 없음에 주의)
 
 Epic / Sub-Task 모두 동일 `mergeFields` 통해 payload 구성. 미리보기 grid 에 sprint config 출처 + Work Type 권장 일수 + Components / Fix Versions 표시.
 
 **operator 무수정**: `payload.fields` 그대로 POST 하므로 components/fixVersions 자동 전달 (JIRA REST 표준 필드).
 
+## 2026-05-04 - Track 4 - import 시 work_types.default_est_days 자동 채움
+
+**범위**: `buildTaskPayload(t, contentIdByKey, workerByName, parentId, now, workTypes)` 시그니처에 6번째 파라미터 `workTypes` 추가. `t.days` 가 null/empty 일 때 `pickWorkType(workTypes, partId, t.action_verb)` 로 매칭해 `default_est_days` 를 round 후 주입. partId 는 `t._content_source_key` 프리픽스로 도출.
+
+`pickWorkType` 모듈 레벨 헬퍼로 분리하여 import + JIRA preview 양쪽에서 공용. JiraPreviewModal 의 기존 `resolveWorkType` 도 이 헬퍼 호출로 단순화. 이전 코드의 `task.part_id` 직접 비교는 tasks 테이블에 part_id 컬럼이 없어 항상 null 반환하던 미발견 버그 - content.source_key 프리픽스 기반으로 교정.
+
+ImportModal.run 흐름에 `db.workTypes()` 1회 호출 추가 + 진단 로그 (`[import] days 미입력 N건 -> work_types.default_est_days 자동 채움`).
+
+**적용 범위 한계**: v17 seed 의 work_types 는 `art_*`, `cutscene`, `design_*` part_id 만 등록됨. 4파트 (`combat`/`level`/`field`/`quest`) 는 work_type 미정의 → `pickWorkType` null → days 미변경. 4파트도 자동 채움 원하면 work_types seed 확장 필요.
+
+**TemplateApplyModal**: 변경 없음. step.duration 은 템플릿 정의 시 이미 설계자가 정한 값이므로 work_types 우선 적용은 보류.
+
 **잔여 (별도 트랙)**:
-- Sprint 자동 투입 (`/rest/agile/1.0/board/1221/sprint`) — P3 (스프린트 자동 투입은 사용자 합의로 추후 설계)
-- 태스크 import / TemplateApplyModal 에서 work_type 기반 estimated_days 자동 채움 (현재는 미리보기에 권장값만 표시)
+- Sprint 자동 투입 (`/rest/agile/1.0/board/1221/sprint`) - P3 (사용자 합의: 추후 설계)
 - workers 편집 UI (신규 입사자/퇴사자 대응)
+- work_types seed 4파트 확장 (필요 시)
