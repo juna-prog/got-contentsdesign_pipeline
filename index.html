@@ -2385,7 +2385,7 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
                     const mapped=!!w.auth_user_id;
                     return<tr key={w.id} onClick={()=>startEdit(w)} style={{cursor:"pointer",background:isSel?"var(--ac-bg)":(inactive?"#f5f5f5":"transparent"),opacity:inactive?0.55:1}}>
                       <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontWeight:isSel?700:500}}>
-                        {w.is_team_lead?"★★ ":w.is_part_lead?"★ ":""}{w.name}
+                        {(w.is_team_lead||w.is_part_lead)?"★ ":""}{w.name}
                         {inactive&&<span style={{fontSize:10,color:"var(--rd)",marginLeft:6}}>[비활성]</span>}
                       </td>
                       <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontFamily:"monospace",fontSize:11,color:w.email?"inherit":"var(--rd)"}}>{w.email||"(미설정)"}</td>
@@ -2442,7 +2442,7 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
                   </label>
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
                     <input type="checkbox" checked={!!form.is_team_lead} onChange={e=>upd("is_team_lead",e.target.checked)}/>
-                    <span>★★ 팀장 권한 (관리자 페이지 접근)</span>
+                    <span>★ 팀장 권한 (관리자 페이지 접근)</span>
                   </label>
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
                     <input type="checkbox" checked={form.is_active!==false} onChange={e=>upd("is_active",e.target.checked)}/>
@@ -3896,7 +3896,7 @@ function App(){
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
         {user&&user.is_team_lead&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title="관리자 페이지 (팀장 전용)" style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>⚙️ 관리자</button>}
         {user&&<span className="user-badge" onClick={signOut} title="로그아웃">
-          {user.is_team_lead?"★★":user.is_lead?"★":""}{user.name}<span className="role">{roleLabel}</span>
+          {(user.is_team_lead||user.is_lead)?"★":""}{user.name}<span className="role">{roleLabel}</span>
         </span>}
         <button className="bt bt-i" onClick={load}>↻</button></div></div>
 
