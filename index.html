@@ -2094,14 +2094,30 @@ function AddForm({vr,onDone}){
     <div className="fa"><button className="bt bt-g" onClick={go} disabled={sv}>{sv?"저장 중...":"등록하기"}</button>{msg&&<span style={{fontSize:13,color:msg.includes("오류")?"var(--rd)":"var(--gn)"}}>{msg}</span>}</div></div>
 }
 
-/* ═══ SIGN IN SCREEN (Magic Link + OTP code) ═══ */
+/* ═══ SIGN IN SCREEN (Magic Link + OTP + Password) ═══ */
 function SignInScreen(){
+  const[mode,setMode]=useState("password"); // "password" | "otp"
   const[email,setEmail]=useState("");
+  const[password,setPassword]=useState("");
   const[sent,setSent]=useState(false);
   const[code,setCode]=useState("");
   const[err,setErr]=useState(null);
   const[loading,setLoading]=useState(false);
   const[verifying,setVerifying]=useState(false);
+  const signInPw=async()=>{
+    const e=email.trim();if(!e||!password){setErr("이메일과 비밀번호를 입력해주세요.");return}
+    setLoading(true);setErr(null);
+    try{
+      const{error}=await supabaseClient.auth.signInWithPassword({email:e,password});
+      if(error){
+        const msg=String(error.message||error);
+        if(msg.toLowerCase().includes("invalid"))setErr("이메일 또는 비밀번호가 올바르지 않습니다.");
+        else setErr("로그인 실패: "+msg);
+      }
+      // 성공 시 onAuthStateChange SIGNED_IN
+    }catch(ex){setErr(String(ex.message||ex))}
+    setLoading(false);
+  };
   const send=async()=>{
     const e=email.trim();if(!e){setErr("회사 메일을 입력해주세요.");return}
     setLoading(true);setErr(null);
@@ -2129,20 +2145,35 @@ function SignInScreen(){
         else if(msg.toLowerCase().includes("invalid"))setErr("코드가 올바르지 않습니다.");
         else setErr("인증 실패: "+msg);
       }
-      // 성공 시 onAuthStateChange 가 SIGNED_IN 처리
     }catch(ex){setErr(String(ex.message||ex))}
     setVerifying(false);
   };
+  const switchMode=(m)=>{setMode(m);setErr(null);setSent(false);setCode("");setPassword("")};
   return<div style={{position:"fixed",inset:0,background:"linear-gradient(135deg,#1e293b 0%,#0f172a 100%)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}}>
     <div style={{background:"#fff",borderRadius:12,padding:"32px 36px",width:380,boxShadow:"0 20px 50px rgba(0,0,0,.4)"}}>
-      <div style={{textAlign:"center",marginBottom:18}}>
+      <div style={{textAlign:"center",marginBottom:14}}>
         <div style={{fontSize:22,fontWeight:800,letterSpacing:"-.5px",color:"#0f172a"}}>Pipeline Tracker</div>
         <div style={{fontSize:11,color:"#64748b",marginTop:4,fontWeight:500}}>Kingsroad · 콘텐츠기획팀 공용</div>
       </div>
-      {!sent?<>
+      {/* Mode toggle */}
+      <div style={{display:"flex",background:"#f1f5f9",borderRadius:6,padding:3,marginBottom:14,fontSize:11}}>
+        <button onClick={()=>switchMode("password")} style={{flex:1,padding:"6px 10px",border:"none",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:600,background:mode==="password"?"#fff":"transparent",color:mode==="password"?"#0f172a":"#64748b",boxShadow:mode==="password"?"0 1px 2px rgba(0,0,0,.08)":"none"}}>🔑 비밀번호</button>
+        <button onClick={()=>switchMode("otp")} style={{flex:1,padding:"6px 10px",border:"none",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:600,background:mode==="otp"?"#fff":"transparent",color:mode==="otp"?"#0f172a":"#64748b",boxShadow:mode==="otp"?"0 1px 2px rgba(0,0,0,.08)":"none"}}>📧 이메일 코드</button>
+      </div>
+
+      {mode==="password"?<>
+        <div style={{fontSize:12,color:"#475569",marginBottom:12,lineHeight:1.6}}>
+          관리자가 발급한 비밀번호로 로그인합니다.
+        </div>
+        <input type="email" placeholder="you@nm-neo.com" value={email} onChange={e=>setEmail(e.target.value)} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:8}}/>
+        <input type="password" placeholder="비밀번호" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")signInPw()}} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:10}}/>
+        {err&&<div style={{padding:8,background:"#fef2f2",color:"#991b1b",borderRadius:5,fontSize:12,marginBottom:10}}>{err}</div>}
+        <button onClick={signInPw} disabled={loading} style={{width:"100%",padding:"10px 14px",fontSize:14,fontWeight:700,background:loading?"#94a3b8":"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:loading?"wait":"pointer",fontFamily:"inherit"}}>
+          {loading?"로그인 중...":"로그인"}
+        </button>
+      </>:!sent?<>
         <div style={{fontSize:12,color:"#475569",marginBottom:14,lineHeight:1.6}}>
-          회사 메일 (<strong>@nm-neo.com</strong>) 을 입력하면 로그인 링크 + 6자리 코드가 발송됩니다.<br/>
-          사전 등록된 사용자만 접근 가능합니다.
+          회사 메일 (<strong>@nm-neo.com</strong>) 입력 시 6자리 코드가 발송됩니다.
         </div>
         <input type="email" placeholder="you@nm-neo.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send()}} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:10}}/>
         {err&&<div style={{padding:8,background:"#fef2f2",color:"#991b1b",borderRadius:5,fontSize:12,marginBottom:10}}>{err}</div>}
