@@ -78,12 +78,15 @@ select option{background:var(--bg)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.52.1/dist/umd/supabase.min.js"></script>
 <script type="text/babel">
 const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const SU="https://huegoxqcoqealhhlrkww.supabase.co",SK="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZWdveHFjb3FlYWxoaGxya3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMDMwOTUsImV4cCI6MjA5MDY3OTA5NX0.1UbszKIibvon_6zRUe1-M4ukCxpu7iytC3dGWhi-EjQ";
-const FH={"apikey":SK,"Authorization":"Bearer "+SK,"Content-Type":"application/json"};
-async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH,Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[])};
+const supabaseClient=window.supabase.createClient(SU,SK,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+let currentSession=null;
+const FH=()=>({"apikey":SK,"Authorization":"Bearer "+(currentSession?.access_token||SK),"Content-Type":"application/json"});
+async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH(),Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[])};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -2091,33 +2094,408 @@ function AddForm({vr,onDone}){
     <div className="fa"><button className="bt bt-g" onClick={go} disabled={sv}>{sv?"저장 중...":"등록하기"}</button>{msg&&<span style={{fontSize:13,color:msg.includes("오류")?"var(--rd)":"var(--gn)"}}>{msg}</span>}</div></div>
 }
 
-/* ═══ USER MODAL ═══ */
-function UserModal({workers,onPick,onClose,canClose}){
-  const[sel,setSel]=useState("");
-  const sorted=useMemo(()=>{const arr=[...(workers||[])];arr.sort((a,b)=>{
-    const al=a.is_team_lead?2:a.is_part_lead?1:0;const bl=b.is_team_lead?2:b.is_part_lead?1:0;
-    if(bl!==al)return bl-al;
-    if(a.part_id!==b.part_id)return(a.part_id||"").localeCompare(b.part_id||"");
-    return(a.name||"").localeCompare(b.name||"")});return arr},[workers]);
-  return<div className="modal-bg" onClick={canClose?onClose:undefined}>
-    <div className="modal" onClick={e=>e.stopPropagation()}>
-      <div className="modal-h">사용자 선택</div>
-      <div className="modal-b">
-        <div style={{fontSize:12,color:"var(--t3)",marginBottom:10}}>본인을 선택해주세요. 권한(파트장/팀장)에 따라 편집 가능 범위가 달라집니다.</div>
-        <select value={sel} onChange={e=>setSel(e.target.value)} style={{width:"100%",fontSize:13,padding:"9px 12px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"inherit"}}>
-          <option value="">-- 선택 --</option>
-          {sorted.map(w=><option key={w.id} value={w.id}>
-            {w.is_team_lead?"★★ ":w.is_part_lead?"★ ":""}{w.name} ({w.is_team_lead?(TEAM_MAP[w.part_id]||"콘텐츠기획")+"팀 / 팀장":(PART_LABELS[w.part_id]||w.part_id||"-")+(w.is_part_lead?" / 파트장":"")})
-          </option>)}
-        </select>
+/* ═══ SIGN IN SCREEN (Magic Link) ═══ */
+function SignInScreen(){
+  const[email,setEmail]=useState("");
+  const[sent,setSent]=useState(false);
+  const[err,setErr]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const send=async()=>{
+    const e=email.trim();if(!e){setErr("회사 메일을 입력해주세요.");return}
+    setLoading(true);setErr(null);
+    try{
+      const{error}=await supabaseClient.auth.signInWithOtp({email:e,options:{shouldCreateUser:false,emailRedirectTo:window.location.origin}});
+      if(error)setErr("이메일 또는 권한을 확인할 수 없습니다. (관리자에게 사전 등록 요청)");
+      else setSent(true);
+    }catch(ex){setErr(String(ex.message||ex))}
+    setLoading(false);
+  };
+  return<div style={{position:"fixed",inset:0,background:"linear-gradient(135deg,#1e293b 0%,#0f172a 100%)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}}>
+    <div style={{background:"#fff",borderRadius:12,padding:"32px 36px",width:380,boxShadow:"0 20px 50px rgba(0,0,0,.4)"}}>
+      <div style={{textAlign:"center",marginBottom:18}}>
+        <div style={{fontSize:22,fontWeight:800,letterSpacing:"-.5px",color:"#0f172a"}}>Pipeline Tracker</div>
+        <div style={{fontSize:11,color:"#64748b",marginTop:4,fontWeight:500}}>Kingsroad · 콘텐츠기획팀 공용</div>
       </div>
-      <div className="modal-f">
-        {canClose&&<button className="bt" onClick={onClose}>취소</button>}
-        <button className="bt bt-g" disabled={!sel} onClick={()=>{const w=sorted.find(x=>String(x.id)===String(sel));if(w)onPick(w)}}>선택</button>
+      {!sent?<>
+        <div style={{fontSize:12,color:"#475569",marginBottom:14,lineHeight:1.6}}>
+          회사 메일 (<strong>@nm-neo.com</strong>) 을 입력하시면 매직링크가 발송됩니다.<br/>
+          사전 등록된 사용자만 접근 가능합니다.
+        </div>
+        <input type="email" placeholder="you@nm-neo.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send()}} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:10}}/>
+        {err&&<div style={{padding:8,background:"#fef2f2",color:"#991b1b",borderRadius:5,fontSize:12,marginBottom:10}}>{err}</div>}
+        <button onClick={send} disabled={loading} style={{width:"100%",padding:"10px 14px",fontSize:14,fontWeight:700,background:loading?"#94a3b8":"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:loading?"wait":"pointer",fontFamily:"inherit"}}>
+          {loading?"전송 중...":"매직링크 보내기"}
+        </button>
+      </>:<>
+        <div style={{textAlign:"center",padding:"20px 0"}}>
+          <div style={{fontSize:36,marginBottom:10}}>📬</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:6}}>매직링크 발송 완료</div>
+          <div style={{fontSize:12,color:"#475569",lineHeight:1.6}}>
+            <strong>{email}</strong> 으로 로그인 링크를 보냈습니다.<br/>
+            메일을 확인하고 링크를 클릭하면 자동 로그인됩니다.
+          </div>
+          <button onClick={()=>{setSent(false);setEmail("")}} style={{marginTop:18,padding:"6px 14px",fontSize:12,background:"transparent",border:"1px solid #cbd5e1",borderRadius:5,cursor:"pointer",fontFamily:"inherit",color:"#475569"}}>
+            다시 보내기
+          </button>
+        </div>
+      </>}
+      <div style={{marginTop:18,paddingTop:14,borderTop:"1px solid #e2e8f0",fontSize:10,color:"#94a3b8",textAlign:"center",lineHeight:1.6}}>
+        문제가 있으면 <strong>juna@nm-neo.com</strong> (관리자) 에게 문의하세요.
       </div>
     </div>
   </div>
 }
+
+/* ═══ ADMIN PANEL (팀장 전용) - 4 tabs ═══ */
+function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImport,onOpenJira,onExportCSV}){
+  const[tab,setTab]=useState("members");
+  const[workers,setWorkers]=useState(initialWorkers||[]);
+  const[parts,setParts]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[editing,setEditing]=useState(null); // null | worker | "new"
+  const[form,setForm]=useState({});
+  const[partFilter,setPartFilter]=useState("");
+  const[search,setSearch]=useState("");
+  const[showInactive,setShowInactive]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[error,setError]=useState(null);
+  const[dirty,setDirty]=useState(false);
+  const[audit,setAudit]=useState([]);
+  const[auditLoading,setAuditLoading]=useState(false);
+  const[auditFilter,setAuditFilter]=useState({actor:"",action:"",table:""});
+  const[expanded,setExpanded]=useState(null);
+
+  const reload=useCallback(async()=>{
+    setLoading(true);
+    const[ws,ps]=await Promise.all([db.workers().catch(()=>[]),db.parts().catch(()=>[])]);
+    setWorkers(ws||[]);setParts(ps||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{reload()},[reload]);
+  useEffect(()=>{if(tab==="audit"){
+    setAuditLoading(true);
+    db.auditLog().then(rows=>{setAudit(rows||[]);setAuditLoading(false)});
+  }},[tab]);
+
+  const partOptions=useMemo(()=>{
+    const fromDb=(parts||[]).map(p=>({id:p.id,label:p.label||PART_LABELS[p.id]||p.id}));
+    const seen=new Set(fromDb.map(p=>p.id));
+    Object.entries(PART_LABELS||{}).forEach(([id,label])=>{if(!seen.has(id))fromDb.push({id,label})});
+    fromDb.sort((a,b)=>(a.label||"").localeCompare(b.label||""));
+    return fromDb;
+  },[parts]);
+  const partLabel=(id)=>{const p=partOptions.find(x=>x.id===id);return p?p.label:(id||"-")};
+
+  const filtered=useMemo(()=>{
+    return(workers||[]).filter(w=>{
+      if(!showInactive&&w.is_active===false)return false;
+      if(partFilter&&w.part_id!==partFilter)return false;
+      if(search){const s=search.toLowerCase();
+        if(!(w.name||"").toLowerCase().includes(s)&&!(w.jira_account_id||"").toLowerCase().includes(s)&&!(w.email||"").toLowerCase().includes(s))return false;
+      }
+      return true;
+    }).sort((a,b)=>{
+      const al=a.is_team_lead?2:a.is_part_lead?1:0;const bl=b.is_team_lead?2:b.is_part_lead?1:0;
+      if(bl!==al)return bl-al;
+      if(a.part_id!==b.part_id)return(a.part_id||"").localeCompare(b.part_id||"");
+      return(a.name||"").localeCompare(b.name||"");
+    });
+  },[workers,partFilter,search,showInactive]);
+
+  const startNew=()=>{
+    if(dirty&&!confirm("편집 중 변경사항이 사라집니다. 계속할까요?"))return;
+    setEditing("new");setForm({name:"",part_id:"",email:"",jira_account_id:"",is_part_lead:false,is_team_lead:false,is_active:true});
+    setError(null);setDirty(false);
+  };
+  const startEdit=(w)=>{
+    if(dirty&&!confirm("편집 중 변경사항이 사라집니다. 계속할까요?"))return;
+    setEditing(w);setForm({name:w.name||"",part_id:w.part_id||"",email:w.email||"",jira_account_id:w.jira_account_id||"",is_part_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead,is_active:w.is_active!==false});
+    setError(null);setDirty(false);
+  };
+  const upd=(k,v)=>{setForm(f=>({...f,[k]:v}));setDirty(true)};
+
+  const save=async()=>{
+    if(!form.name||!form.name.trim()){setError("이름은 필수");return}
+    if(!form.part_id){setError("파트는 필수");return}
+    setSaving(true);setError(null);
+    try{
+      const newEmail=(form.email||"").trim()||null;
+      const oldEmail=editing&&typeof editing==="object"?(editing.email||null):null;
+      const emailChanged=editing!=="new"&&newEmail!==oldEmail;
+      const payload={
+        name:form.name.trim(),
+        part_id:form.part_id,
+        email:newEmail,
+        jira_account_id:(form.jira_account_id||"").trim()||null,
+        is_part_lead:!!form.is_part_lead,
+        is_team_lead:!!form.is_team_lead,
+        is_active:form.is_active!==false
+      };
+      if(emailChanged)payload.auth_user_id=null; // 재매핑 트리거
+      let id;
+      if(editing==="new"){
+        const r=await db.insWorker(payload);
+        id=r&&r[0]?r[0].id:null;
+        db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"worker.invite",target_table:"workers",target_id:String(id||""),payload});
+      }else{
+        await db.updWorker(editing.id,payload);
+        id=editing.id;
+        const actionType=oldEmail!==null&&editing.is_active!==false&&payload.is_active===false?"worker.deactivate":
+          editing.is_active===false&&payload.is_active===true?"worker.activate":"worker.update";
+        db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:actionType,target_table:"workers",target_id:String(id),payload:{before:{email:oldEmail,is_active:editing.is_active!==false},after:payload}});
+      }
+      await reload();
+      setEditing(null);setDirty(false);
+      onDone&&onDone();
+    }catch(e){
+      const msg=String(e&&e.message||e);
+      setError(msg);
+    }finally{setSaving(false)}
+  };
+
+  const closePanel=()=>{
+    if(dirty&&!confirm("편집 중 변경사항이 사라집니다. 계속할까요?"))return;
+    onClose();
+  };
+
+  const fmtDate=ts=>ts?new Date(ts).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"-";
+
+  const filteredAudit=useMemo(()=>(audit||[]).filter(r=>{
+    if(auditFilter.actor&&!String(r.actor_email||"").toLowerCase().includes(auditFilter.actor.toLowerCase()))return false;
+    if(auditFilter.action&&!String(r.action_type||"").includes(auditFilter.action))return false;
+    if(auditFilter.table&&r.target_table!==auditFilter.table)return false;
+    return true;
+  }),[audit,auditFilter]);
+
+  return<div className="modal-bg" onClick={closePanel}>
+    <div className="modal" style={{maxWidth:1200,width:"96vw",maxHeight:"92vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span>⚙️ 관리자 페이지 <span style={{fontSize:11,fontWeight:400,color:"var(--t3)",marginLeft:8}}>팀장 전용 · {user.email}</span></span>
+        <button className="bt bt-s" onClick={closePanel}>✕ 닫기</button>
+      </div>
+      <div className="tab-row" style={{padding:"0 18px",margin:0,borderBottom:"1px solid var(--bd)"}}>
+        <button className={tab==="members"?"on":""} onClick={()=>setTab("members")}>👥 사용자 ({workers.length})</button>
+        <button className={tab==="audit"?"on":""} onClick={()=>setTab("audit")}>📜 활동 로그</button>
+        <button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>
+        <button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>
+      </div>
+      <div style={{flex:1,overflow:"auto",padding:14}}>
+
+      {/* ━━ Tab 1: Members (사용자 + 워커 상세 통합) ━━ */}
+      {tab==="members"&&(loading?<div style={{padding:40,textAlign:"center",color:"var(--t3)"}}>불러오는 중...</div>:
+        <div style={{display:"grid",gridTemplateColumns:"1fr 400px",gap:12,minHeight:520}}>
+          <div style={{border:"1px solid var(--bd)",borderRadius:6,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{display:"flex",gap:6,padding:8,borderBottom:"1px solid var(--bd)",background:"var(--bg2)",flexWrap:"wrap"}}>
+              <input placeholder="이름/JIRA/이메일 검색" value={search} onChange={e=>setSearch(e.target.value)} style={{flex:"1 1 160px",minWidth:140,fontSize:12,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:4}}/>
+              <select value={partFilter} onChange={e=>setPartFilter(e.target.value)} style={{fontSize:12,padding:"4px 6px",border:"1px solid var(--bd)",borderRadius:4}}>
+                <option value="">전체 파트</option>
+                {partOptions.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+              <label style={{fontSize:11,display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}>
+                <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/>비활성 포함
+              </label>
+              <button className="bt bt-s bt-g" onClick={startNew} style={{whiteSpace:"nowrap"}}>+ 신규 초대</button>
+            </div>
+            <div style={{flex:1,overflow:"auto"}}>
+              <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                <thead style={{position:"sticky",top:0,background:"var(--bg2)",zIndex:1}}>
+                  <tr>
+                    <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>이름</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>이메일</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>파트</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>역할</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>매핑</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>마지막 접속</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"var(--t3)"}}>표시할 사용자가 없습니다.</td></tr>}
+                  {filtered.map(w=>{
+                    const isSel=editing&&typeof editing==="object"&&editing.id===w.id;
+                    const inactive=w.is_active===false;
+                    const mapped=!!w.auth_user_id;
+                    return<tr key={w.id} onClick={()=>startEdit(w)} style={{cursor:"pointer",background:isSel?"var(--ac-bg)":(inactive?"#f5f5f5":"transparent"),opacity:inactive?0.55:1}}>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontWeight:isSel?700:500}}>
+                        {w.is_team_lead?"★★ ":w.is_part_lead?"★ ":""}{w.name}
+                        {inactive&&<span style={{fontSize:10,color:"var(--rd)",marginLeft:6}}>[비활성]</span>}
+                      </td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontFamily:"monospace",fontSize:11,color:w.email?"inherit":"var(--rd)"}}>{w.email||"(미설정)"}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)"}}>{partLabel(w.part_id)}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11}}>{w.is_team_lead?"팀장":w.is_part_lead?"파트장":"-"}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11}}>
+                        <span style={{color:mapped?"var(--gn)":"var(--t4)"}}>{mapped?"✓ 연결":"⊝ 미연결"}</span>
+                      </td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11,color:"var(--t3)"}}>{fmtDate(w.last_login_at)}</td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{padding:"6px 10px",borderTop:"1px solid var(--bd)",fontSize:11,color:"var(--t3)",background:"var(--bg2)"}}>
+              총 {filtered.length}명 · 활성 {workers.filter(w=>w.is_active!==false).length} · 매핑 완료 {workers.filter(w=>w.auth_user_id).length}
+            </div>
+          </div>
+
+          <div style={{border:"1px solid var(--bd)",borderRadius:6,padding:12,background:"var(--bg)",display:"flex",flexDirection:"column",gap:10,overflow:"auto"}}>
+            {!editing?
+              <div style={{textAlign:"center",color:"var(--t3)",padding:"40px 0",fontSize:12,lineHeight:1.6}}>
+                좌측 행을 클릭하여 편집<br/>또는 <strong>+ 신규 초대</strong> 로 등록<br/><br/>
+                <span style={{fontSize:11}}>📧 신규 초대 시 이메일 등록 후<br/>본인이 SignIn 화면에서 매직링크 발송하면<br/>자동으로 매핑됩니다.</span>
+              </div>:
+              <>
+                <div style={{fontSize:13,fontWeight:700,paddingBottom:6,borderBottom:"1px solid var(--bd)"}}>
+                  {editing==="new"?"➕ 신규 사용자 초대":"✏️ "+editing.name+" 편집"}
+                </div>
+                <label style={{fontSize:11,fontWeight:600}}>
+                  이름 <span style={{color:"var(--rd)"}}>*</span>
+                  <input value={form.name||""} onChange={e=>upd("name",e.target.value)} style={{width:"100%",fontSize:13,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,marginTop:3}}/>
+                </label>
+                <label style={{fontSize:11,fontWeight:600}}>
+                  파트 <span style={{color:"var(--rd)"}}>*</span>
+                  <select value={form.part_id||""} onChange={e=>upd("part_id",e.target.value)} style={{width:"100%",fontSize:13,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,marginTop:3}}>
+                    <option value="">-- 선택 --</option>
+                    {partOptions.map(p=><option key={p.id} value={p.id}>{p.label} ({p.id})</option>)}
+                  </select>
+                </label>
+                <label style={{fontSize:11,fontWeight:600}}>
+                  회사 메일 <span style={{color:"var(--t3)",fontWeight:400}}>(@nm-neo.com 만 인증 가능)</span>
+                  <input type="email" value={form.email||""} onChange={e=>upd("email",e.target.value)} placeholder="hycho@nm-neo.com" style={{width:"100%",fontSize:13,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,marginTop:3,fontFamily:"monospace"}}/>
+                  {editing!=="new"&&editing.email&&form.email&&form.email!==editing.email&&<div style={{fontSize:10,color:"var(--or)",marginTop:3}}>⚠ 이메일 변경 시 auth 매핑이 리셋됩니다 (다음 로그인에서 재매핑)</div>}
+                </label>
+                <label style={{fontSize:11,fontWeight:600}}>
+                  JIRA Account ID <span style={{color:"var(--t3)",fontWeight:400}}>(jira.nmn.io username)</span>
+                  <input value={form.jira_account_id||""} onChange={e=>upd("jira_account_id",e.target.value)} placeholder="예: juna, hycho" style={{width:"100%",fontSize:13,padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,marginTop:3,fontFamily:"monospace"}}/>
+                </label>
+                <div style={{display:"flex",flexDirection:"column",gap:4,padding:"8px 10px",background:"var(--bg2)",borderRadius:4,fontSize:12}}>
+                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!form.is_part_lead} onChange={e=>upd("is_part_lead",e.target.checked)}/>
+                    <span>★ 파트장 권한</span>
+                  </label>
+                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!form.is_team_lead} onChange={e=>upd("is_team_lead",e.target.checked)}/>
+                    <span>★★ 팀장 권한 (관리자 페이지 접근)</span>
+                  </label>
+                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                    <input type="checkbox" checked={form.is_active!==false} onChange={e=>upd("is_active",e.target.checked)}/>
+                    <span>활성 (비활성=인증/데이터 둘 다 차단, 이력 보존)</span>
+                  </label>
+                </div>
+                {editing!=="new"&&<div style={{fontSize:10,color:"var(--t3)",padding:"4px 8px",background:"var(--bg2)",borderRadius:4,lineHeight:1.5}}>
+                  ID: <strong>{editing.id}</strong> · auth_user_id: <span style={{fontFamily:"monospace"}}>{editing.auth_user_id||"(미연결)"}</span><br/>
+                  마지막 접속: {fmtDate(editing.last_login_at)} · 가입: {fmtDate(editing.invited_at||editing.created_at)}
+                </div>}
+                {error&&<div style={{padding:8,background:"#fee2e2",color:"#991b1b",borderRadius:4,fontSize:11,lineHeight:1.5}}>{error}</div>}
+                <div style={{display:"flex",gap:6,marginTop:"auto"}}>
+                  <button className="bt" onClick={()=>{if(dirty&&!confirm("변경사항을 버릴까요?"))return;setEditing(null);setDirty(false);setError(null)}} disabled={saving}>취소</button>
+                  <button className="bt bt-g" onClick={save} disabled={saving||!dirty} style={{flex:1}}>{saving?"저장 중...":(editing==="new"?"➕ 초대":"💾 저장")}</button>
+                </div>
+              </>
+            }
+          </div>
+        </div>)}
+
+      {/* ━━ Tab 2: Audit Log ━━ */}
+      {tab==="audit"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",padding:8,background:"var(--bg2)",borderRadius:6}}>
+          <input placeholder="actor 이메일 검색" value={auditFilter.actor} onChange={e=>setAuditFilter({...auditFilter,actor:e.target.value})} style={{fontSize:12,padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:4,minWidth:160}}/>
+          <select value={auditFilter.action} onChange={e=>setAuditFilter({...auditFilter,action:e.target.value})} style={{fontSize:12,padding:"4px 6px",border:"1px solid var(--bd)",borderRadius:4}}>
+            <option value="">전체 action</option>
+            <option value="auth.">auth.* (로그인/로그아웃)</option>
+            <option value="worker.">worker.* (사용자 변경)</option>
+            <option value="content.">content.* (콘텐츠)</option>
+            <option value="task.">task.* (태스크)</option>
+            <option value="import.">import.* (시트 가져오기)</option>
+            <option value="jira.">jira.* (JIRA)</option>
+          </select>
+          <select value={auditFilter.table} onChange={e=>setAuditFilter({...auditFilter,table:e.target.value})} style={{fontSize:12,padding:"4px 6px",border:"1px solid var(--bd)",borderRadius:4}}>
+            <option value="">전체 테이블</option>
+            <option value="workers">workers</option>
+            <option value="contents">contents</option>
+            <option value="tasks">tasks</option>
+          </select>
+          <button className="bt bt-s" onClick={()=>{setAuditLoading(true);db.auditLog().then(rows=>{setAudit(rows||[]);setAuditLoading(false)})}}>↻ 새로고침</button>
+          <span style={{marginLeft:"auto",fontSize:11,color:"var(--t3)",alignSelf:"center"}}>{filteredAudit.length} / {audit.length} (최근 200건)</span>
+        </div>
+        {auditLoading?<div style={{padding:40,textAlign:"center",color:"var(--t3)"}}>로딩 중...</div>:
+        <div style={{border:"1px solid var(--bd)",borderRadius:6,maxHeight:540,overflow:"auto"}}>
+          <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+            <thead style={{position:"sticky",top:0,background:"var(--bg2)",zIndex:1}}>
+              <tr>
+                <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)",width:130}}>시간</th>
+                <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>Actor</th>
+                <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>Action</th>
+                <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>Target</th>
+                <th style={{textAlign:"left",padding:"6px 8px",borderBottom:"1px solid var(--bd)"}}>Payload</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAudit.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:30,color:"var(--t3)"}}>로그가 없습니다.</td></tr>}
+              {filteredAudit.map(r=>{
+                const open=expanded===r.id;
+                return<React.Fragment key={r.id}>
+                  <tr style={{cursor:"pointer",background:open?"var(--ac-bg)":"transparent"}} onClick={()=>setExpanded(open?null:r.id)}>
+                    <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11,color:"var(--t3)",fontFamily:"monospace"}}>{fmtDate(r.created_at)}</td>
+                    <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11,fontFamily:"monospace"}}>{r.actor_email||"(?)"}</td>
+                    <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11,fontFamily:"monospace",fontWeight:600}}>{r.action_type}</td>
+                    <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11}}>{r.target_table?<span style={{fontFamily:"monospace"}}>{r.target_table}#{r.target_id||"-"}</span>:"-"}</td>
+                    <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11,color:"var(--t3)"}}>{r.payload?(open?"▲ 닫기":"▼ 보기"):"-"}</td>
+                  </tr>
+                  {open&&r.payload&&<tr><td colSpan={5} style={{padding:"4px 12px 10px",background:"var(--bg2)",borderBottom:"1px solid var(--bd)"}}>
+                    <pre style={{fontSize:10,fontFamily:"monospace",margin:0,whiteSpace:"pre-wrap",wordBreak:"break-all",color:"var(--t2)"}}>{JSON.stringify(r.payload,null,2)}</pre>
+                  </td></tr>}
+                </React.Fragment>;
+              })}
+            </tbody>
+          </table>
+        </div>}
+      </div>}
+
+      {/* ━━ Tab 3: Quick Actions ━━ */}
+      {tab==="actions"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12,padding:8}}>
+        <div style={{border:"1px solid var(--bd)",borderRadius:8,padding:16,background:"var(--bg)"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>📤 CSV 내보내기</div>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:10,lineHeight:1.5}}>전체 콘텐츠/태스크/담당자를 단일 CSV 파일로 다운로드.</div>
+          <button className="bt bt-g" onClick={onExportCSV} style={{width:"100%"}}>다운로드</button>
+        </div>
+        <div style={{border:"1px solid var(--bd)",borderRadius:8,padding:16,background:"var(--bg)"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>📥 시트 가져오기</div>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:10,lineHeight:1.5}}>xlsx/csv 파일에서 콘텐츠/태스크 일괄 등록 (source_key 기반 upsert).</div>
+          <button className="bt" onClick={onOpenImport} style={{width:"100%"}}>가져오기 모달 열기</button>
+        </div>
+        <div style={{border:"1px solid var(--bd)",borderRadius:8,padding:16,background:"var(--bg)"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>🔄 JIRA 동기화</div>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:10,lineHeight:1.5}}>JIRA 이슈 상태를 트래커 태스크 상태로 일괄 반영 (jira_url 등록된 태스크만).</div>
+          <button className="bt" onClick={onOpenJira} style={{width:"100%"}}>동기화 모달 열기</button>
+        </div>
+        <div style={{border:"1px dashed var(--bd)",borderRadius:8,padding:16,background:"var(--bg2)",color:"var(--t3)"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>📊 대시보드 (예정)</div>
+          <div style={{fontSize:11,lineHeight:1.5}}>파트별 워크로드, 게이트별 잔량, 일정 위험도 - Phase 2.</div>
+        </div>
+      </div>}
+
+      {/* ━━ Tab 4: 확장 슬롯 ━━ */}
+      {tab==="ext"&&<div style={{padding:30,textAlign:"center"}}>
+        <div style={{fontSize:14,color:"var(--t2)",marginBottom:16,fontWeight:700}}>🔌 확장 슬롯 (Phase 2~)</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,maxWidth:900,margin:"0 auto"}}>
+          {[
+            {p:"Phase 2",t:"📢 공지/게시판",d:"notices 테이블, 단일 페이지"},
+            {p:"Phase 3",t:"💬 채널/메시지",d:"Realtime, 멘션, 알림"},
+            {p:"Phase 4",t:"📎 파일/PWA/푸시",d:"Storage, Service Worker"},
+            {p:"장기",t:"🔐 회사 SSO",d:"인프라팀 협의"},
+            {p:"장기",t:"🌐 도메인 추가",d:"allowed_email_domains UI"},
+            {p:"장기",t:"👥 권한 그룹",d:"부서별 가시성"}
+          ].map((x,i)=><div key={i} style={{border:"1px dashed var(--bd)",borderRadius:6,padding:14,textAlign:"left",background:"var(--bg2)"}}>
+            <div style={{fontSize:10,color:"var(--t4)",fontWeight:600,marginBottom:4}}>{x.p}</div>
+            <div style={{fontSize:13,fontWeight:700,color:"var(--t2)",marginBottom:4}}>{x.t}</div>
+            <div style={{fontSize:11,color:"var(--t3)"}}>{x.d}</div>
+          </div>)}
+        </div>
+      </div>}
+
+      </div>
+    </div>
+  </div>;
+}
+
 
 /* ═══ JIRA SYNC MODAL ═══ */
 function JiraSyncModal({tasks,onClose,onDone}){
@@ -3304,9 +3682,13 @@ function App(){
   const[deps,setDeps]=useState([]);const[depV,setDepV]=useState([]);
   const[changes,setChanges]=useState([]);
   const[ld,setLd]=useState(true);const[err,setErr]=useState(null);const[fv,setFv]=useState("all");
-  const[user,setUser]=useState(null);const[userModal,setUserModal]=useState(false);
+  const[user,setUser]=useState(null);
+  const[authReady,setAuthReady]=useState(false);
+  const[authedSession,setAuthedSession]=useState(null);
+  const[authNotice,setAuthNotice]=useState(null);
   const[jumpId,setJumpId]=useState(null);
   const[importModal,setImportModal]=useState(false);
+  const[adminPanel,setAdminPanel]=useState(false);
   const[toastMsg,setToastMsg]=useState(null);
   useEffect(()=>{
     let timer;
@@ -3317,23 +3699,54 @@ function App(){
   const[filters,setFilters]=useState({});
   const setFilter=(key,val)=>setFilters(p=>({...p,[key]:val}));
 
-  // Resolve user from localStorage once workers loaded
-  useEffect(()=>{if(wk.length===0)return;
-    const uid=localStorage.getItem("pipeline_user_id");
-    if(!uid){setUserModal(true);return}
-    const w=wk.find(x=>String(x.id)===String(uid));
-    if(!w){setUserModal(true);return}
-    setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead});
-  },[wk]);
+  // ═══ Supabase Auth bootstrap ═══
+  const handleSession=useCallback(async(sess)=>{
+    currentSession=sess;
+    setAuthedSession(sess);
+    if(!sess){setUser(null);setAuthReady(true);return}
+    try{
+      const ws=await db.workersByEmail(sess.user.email);
+      const w=(ws||[])[0];
+      if(!w||w.is_active===false){
+        setAuthNotice("등록되지 않은 사용자이거나 비활성 상태입니다. 관리자(juna@nm-neo.com)에게 문의하세요.");
+        await supabaseClient.auth.signOut();
+        setAuthReady(true);return;
+      }
+      const patch={last_login_at:new Date().toISOString()};
+      if(!w.auth_user_id)patch.auth_user_id=sess.user.id;
+      try{await db.updWorker(w.id,patch)}catch{}
+      setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead,email:sess.user.email});
+      db.addAudit({actor_worker_id:w.id,actor_email:sess.user.email,action_type:"auth.login",target_table:"workers",target_id:String(w.id),payload:{ts:new Date().toISOString()}});
+    }catch(e){
+      setAuthNotice("워커 매핑 중 오류: "+(e.message||e));
+      await supabaseClient.auth.signOut();
+    }
+    setAuthReady(true);
+  },[]);
+
+  useEffect(()=>{
+    // 1. localStorage cleanup (legacy pipeline_user_id)
+    try{localStorage.removeItem("pipeline_user_id")}catch{}
+    // 2. initial session
+    supabaseClient.auth.getSession().then(({data})=>handleSession(data.session));
+    // 3. listener
+    const{data:{subscription}}=supabaseClient.auth.onAuthStateChange((evt,sess)=>{
+      if(evt==="SIGNED_OUT"){currentSession=null;setUser(null);setAuthedSession(null);setAuthReady(true);return}
+      handleSession(sess);
+    });
+    return()=>subscription.unsubscribe();
+  },[handleSession]);
 
   const load=useCallback(async(silent)=>{if(!silent){setLd(true);setErr(null)}try{
     const[v,c,m,w,t,ch,dp,dv]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[]),db.recentChanges(),db.deps(),db.depViolations()]);
     setVr(v||[]);setCt(c||[]);setMs(m||[]);setWk(w||[]);setAllT(t||[]);setChanges(ch||[]);setDeps(dp||[]);setDepV(dv||[]);if(!silent)setErr(null);
   }catch(e){if(!silent)setErr(e.message)}if(!silent)setLd(false)},[]);
-  useEffect(()=>{load()},[load]);
+  useEffect(()=>{if(user)load()},[load,user]);
 
-  const pickUser=(w)=>{localStorage.setItem("pipeline_user_id",w.id);
-    setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead});setUserModal(false)};
+  const signOut=async()=>{
+    if(user){db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"auth.logout",target_table:"workers",target_id:String(user.id),payload:{}})}
+    await supabaseClient.auth.signOut();
+  };
 
   const handleJump=(contentId)=>{setV("pipeline");setJumpId(contentId);setTimeout(()=>setJumpId(null),1500)};
 
@@ -3392,6 +3805,18 @@ function App(){
 
   const roleLabel=user?(user.is_team_lead?(TEAM_MAP[user.part_id]||"콘텐츠기획")+"팀 팀장":user.is_lead?"파트장":"작업자"):"";
 
+  // ═══ Auth gate ═══
+  if(!authReady)return<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#f8f9fb",fontSize:14,color:"var(--t3)"}}>인증 확인 중...</div>;
+  if(!authedSession||!user){
+    return<>
+      <SignInScreen/>
+      {authNotice&&<div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:"#fef2f2",color:"#991b1b",padding:"10px 18px",borderRadius:8,fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.18)",zIndex:10000,maxWidth:480,textAlign:"center",lineHeight:1.5}}>
+        ⚠ {authNotice}
+        <button onClick={()=>setAuthNotice(null)} style={{marginLeft:10,background:"transparent",border:"none",color:"#991b1b",cursor:"pointer",fontWeight:700,fontSize:14}}>×</button>
+      </div>}
+    </>;
+  }
+
   return<div className="app">
     {/* Header */}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8,flexShrink:0}}>
@@ -3399,10 +3824,8 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
-        <button className="bt bt-s" onClick={()=>setJiraSyncModal(true)} title="JIRA 상태를 트래커에 동기화">🔄 JIRA 동기화</button>
-        <button className="bt bt-s" onClick={exportCSV} title="전체 데이터를 CSV로 내보내기">📤 CSV 내보내기</button>
-        {user&&(user.is_lead||user.is_team_lead)&&<button className="bt bt-s" onClick={()=>setImportModal(true)} title="xlsx 시트 가져오기">📥 시트 가져오기</button>}
-        {user&&<span className="user-badge" onClick={()=>setUserModal(true)} title="사용자 변경">
+        {user&&user.is_team_lead&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title="관리자 페이지 (팀장 전용)" style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>⚙️ 관리자</button>}
+        {user&&<span className="user-badge" onClick={signOut} title="로그아웃">
           {user.is_team_lead?"★★":user.is_lead?"★":""}{user.name}<span className="role">{roleLabel}</span>
         </span>}
         <button className="bt bt-i" onClick={load}>↻</button></div></div>
@@ -3436,9 +3859,9 @@ function App(){
       </>}
     </div>
 
-    {userModal&&wk.length>0&&<UserModal workers={wk} onPick={pickUser} onClose={()=>setUserModal(false)} canClose={!!user}/>}
-    {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={()=>load(true)}/>}
-    {jiraSyncModal&&<JiraSyncModal tasks={allT} onClose={()=>setJiraSyncModal(false)} onDone={()=>load(true)}/>}
+    {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={(summary)=>{load(true);db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"import.run",target_table:"contents",target_id:null,payload:summary||{}})}}/>}
+    {jiraSyncModal&&<JiraSyncModal tasks={allT} onClose={()=>setJiraSyncModal(false)} onDone={(summary)=>{load(true);db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"jira.sync",target_table:"tasks",target_id:null,payload:summary||{}})}}/>}
+    {adminPanel&&user&&user.is_team_lead&&<AdminPanel user={user} workers={wk} tasks={allT} onClose={()=>setAdminPanel(false)} onDone={()=>load(true)} onOpenImport={()=>{setAdminPanel(false);setImportModal(true)}} onOpenJira={()=>{setAdminPanel(false);setJiraSyncModal(true)}} onExportCSV={exportCSV}/>}
     {toastMsg&&<div style={{position:"fixed",top:16,right:16,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.18)",zIndex:9999,animation:"toastIn .18s ease-out"}}>✓ {toastMsg}</div>}
   </div>
 }

@@ -354,5 +354,28 @@ ImportModal.run 흐름에 `db.workTypes()` 1회 호출 추가 + 진단 로그 (`
 
 **잔여 (별도 트랙)**:
 - Sprint 자동 투입 (`/rest/agile/1.0/board/1221/sprint`) - P3 (사용자 합의: 추후 설계)
-- workers 편집 UI (신규 입사자/퇴사자 대응)
 - work_types seed 4파트 확장 (필요 시)
+
+## 2026-05-04 - Track 3 - workers 편집 UI (팀장 전용)
+
+**범위**: `WorkersAdminModal` 신규. 헤더 우측 `👥 작업자` 버튼 (is_team_lead 만 노출) → 모달 오픈.
+
+**기능**:
+- 좌측 리스트: 검색(이름/JIRA ID) + 파트 필터 + "비활성 포함" 체크박스 + 신규 추가 버튼. 정렬 = team_lead → part_lead → 일반, 그 안에서 part_id+name. 비활성 행은 회색 + `[비활성]` 배지.
+- 우측 편집 패널: name (필수) / part_id 드롭다운 (parts 테이블 + PART_LABELS 머지 후 정렬) / jira_account_id (jira.nmn.io username) / is_part_lead / is_team_lead / is_active.
+- dirty 상태 추적, 미저장 변경 시 모달 닫기/행 전환 시 confirm.
+- 저장 = `editing==="new"` ? `db.insWorker(payload)` : `db.updWorker(editing.id, payload)`. 성공 시 `reload()` + `onDone()` (App.load(true)).
+
+**신규 db helper**:
+- `db.insWorker(d)` → POST `/workers`
+- `db.updWorker(i,d)` → PATCH `/workers?id=eq.{i}`
+- 의도적으로 `delWorker` 미추가. `task_assignees` 가 ON DELETE CASCADE 라 hard delete 시 과거 일감 매핑 손실. 퇴직자는 `is_active=false` 토글로만 처리.
+
+**v18 마이그레이션 (workers.is_active 추가)**:
+- `migrations/v18_worker_is_active.sql` - `ALTER TABLE workers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE NOT NULL`.
+- 적용 전엔 모달의 "활성" 토글 저장 시 PostgREST 가 unknown column 에러 → 코드는 메시지를 감지해 안내 문구 표시 (`v18 마이그레이션 미적용. migrations/v18_worker_is_active.sql 을 Supabase 에 먼저 실행해 주세요.`).
+- 적용 후엔 신규/기존 모두 `is_active=TRUE` 기본값.
+
+**적용 범위 한계 (의도적 비범위)**:
+- UserModal 의 사용자 선택 드롭다운 / JIRA preview assignee 후보 / TaskSheet assignee 표시 등 다른 UI 의 "is_active=false 워커 숨기기" 처리는 후속. 현재 모달은 CRUD + 비활성 표시만 담당.
+- 권한: 헤더 버튼이 is_team_lead 한정으로 노출되며, 모달 자체에는 추가 권한 가드 없음 (헤더 게이트로 충분).
