@@ -2094,12 +2094,14 @@ function AddForm({vr,onDone}){
     <div className="fa"><button className="bt bt-g" onClick={go} disabled={sv}>{sv?"저장 중...":"등록하기"}</button>{msg&&<span style={{fontSize:13,color:msg.includes("오류")?"var(--rd)":"var(--gn)"}}>{msg}</span>}</div></div>
 }
 
-/* ═══ SIGN IN SCREEN (Magic Link) ═══ */
+/* ═══ SIGN IN SCREEN (Magic Link + OTP code) ═══ */
 function SignInScreen(){
   const[email,setEmail]=useState("");
   const[sent,setSent]=useState(false);
+  const[code,setCode]=useState("");
   const[err,setErr]=useState(null);
   const[loading,setLoading]=useState(false);
+  const[verifying,setVerifying]=useState(false);
   const send=async()=>{
     const e=email.trim();if(!e){setErr("회사 메일을 입력해주세요.");return}
     setLoading(true);setErr(null);
@@ -2108,11 +2110,28 @@ function SignInScreen(){
       if(error){
         const msg=String(error.message||error);
         if(msg.toLowerCase().includes("domain"))setErr("회사 메일(@nm-neo.com)만 가입 가능합니다.");
-        else setErr("매직링크 발송 실패: "+msg);
+        else if(msg.toLowerCase().includes("rate"))setErr("발송 한도 초과. 1시간 후 재시도.");
+        else setErr("발송 실패: "+msg);
       }
       else setSent(true);
     }catch(ex){setErr(String(ex.message||ex))}
     setLoading(false);
+  };
+  const verify=async()=>{
+    const c=code.trim().replace(/\s/g,"");
+    if(!/^\d{6}$/.test(c)){setErr("6자리 숫자 코드를 입력해주세요.");return}
+    setVerifying(true);setErr(null);
+    try{
+      const{error}=await supabaseClient.auth.verifyOtp({email:email.trim(),token:c,type:"email"});
+      if(error){
+        const msg=String(error.message||error);
+        if(msg.toLowerCase().includes("expired"))setErr("코드가 만료되었습니다. 새 코드를 요청해주세요.");
+        else if(msg.toLowerCase().includes("invalid"))setErr("코드가 올바르지 않습니다.");
+        else setErr("인증 실패: "+msg);
+      }
+      // 성공 시 onAuthStateChange 가 SIGNED_IN 처리
+    }catch(ex){setErr(String(ex.message||ex))}
+    setVerifying(false);
   };
   return<div style={{position:"fixed",inset:0,background:"linear-gradient(135deg,#1e293b 0%,#0f172a 100%)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}}>
     <div style={{background:"#fff",borderRadius:12,padding:"32px 36px",width:380,boxShadow:"0 20px 50px rgba(0,0,0,.4)"}}>
@@ -2122,26 +2141,33 @@ function SignInScreen(){
       </div>
       {!sent?<>
         <div style={{fontSize:12,color:"#475569",marginBottom:14,lineHeight:1.6}}>
-          회사 메일 (<strong>@nm-neo.com</strong>) 을 입력하시면 매직링크가 발송됩니다.<br/>
+          회사 메일 (<strong>@nm-neo.com</strong>) 을 입력하면 로그인 링크 + 6자리 코드가 발송됩니다.<br/>
           사전 등록된 사용자만 접근 가능합니다.
         </div>
         <input type="email" placeholder="you@nm-neo.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send()}} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:10}}/>
         {err&&<div style={{padding:8,background:"#fef2f2",color:"#991b1b",borderRadius:5,fontSize:12,marginBottom:10}}>{err}</div>}
         <button onClick={send} disabled={loading} style={{width:"100%",padding:"10px 14px",fontSize:14,fontWeight:700,background:loading?"#94a3b8":"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:loading?"wait":"pointer",fontFamily:"inherit"}}>
-          {loading?"전송 중...":"매직링크 보내기"}
+          {loading?"전송 중...":"로그인 메일 보내기"}
         </button>
       </>:<>
-        <div style={{textAlign:"center",padding:"20px 0"}}>
-          <div style={{fontSize:36,marginBottom:10}}>📬</div>
-          <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:6}}>매직링크 발송 완료</div>
-          <div style={{fontSize:12,color:"#475569",lineHeight:1.6}}>
-            <strong>{email}</strong> 으로 로그인 링크를 보냈습니다.<br/>
-            메일을 확인하고 링크를 클릭하면 자동 로그인됩니다.
+        <div style={{textAlign:"center",marginBottom:14}}>
+          <div style={{fontSize:30,marginBottom:8}}>📬</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:4}}>발송 완료</div>
+          <div style={{fontSize:11,color:"#475569",lineHeight:1.5}}>
+            <strong>{email}</strong> 메일을 확인하세요.
           </div>
-          <button onClick={()=>{setSent(false);setEmail("")}} style={{marginTop:18,padding:"6px 14px",fontSize:12,background:"transparent",border:"1px solid #cbd5e1",borderRadius:5,cursor:"pointer",fontFamily:"inherit",color:"#475569"}}>
-            다시 보내기
-          </button>
         </div>
+        <div style={{fontSize:12,color:"#475569",marginBottom:10,lineHeight:1.6}}>
+          메일의 <strong>6자리 코드</strong> 를 입력하거나, 메일 내 <strong>Log In 링크</strong> 를 클릭해주세요.
+        </div>
+        <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="000000" value={code} onChange={e=>setCode(e.target.value.replace(/[^\d]/g,""))} onKeyDown={e=>{if(e.key==="Enter")verify()}} disabled={verifying} style={{width:"100%",fontSize:22,letterSpacing:"6px",textAlign:"center",padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"monospace",marginBottom:10}}/>
+        {err&&<div style={{padding:8,background:"#fef2f2",color:"#991b1b",borderRadius:5,fontSize:12,marginBottom:10}}>{err}</div>}
+        <button onClick={verify} disabled={verifying||code.length!==6} style={{width:"100%",padding:"10px 14px",fontSize:14,fontWeight:700,background:verifying?"#94a3b8":"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:verifying?"wait":"pointer",fontFamily:"inherit",marginBottom:8}}>
+          {verifying?"인증 중...":"코드로 로그인"}
+        </button>
+        <button onClick={()=>{setSent(false);setCode("");setErr(null)}} disabled={verifying} style={{width:"100%",padding:"6px 14px",fontSize:12,background:"transparent",border:"1px solid #cbd5e1",borderRadius:5,cursor:"pointer",fontFamily:"inherit",color:"#475569"}}>
+          ← 이메일 다시 입력
+        </button>
       </>}
       <div style={{marginTop:18,paddingTop:14,borderTop:"1px solid #e2e8f0",fontSize:10,color:"#94a3b8",textAlign:"center",lineHeight:1.6}}>
         문제가 있으면 <strong>juna@nm-neo.com</strong> (관리자) 에게 문의하세요.
