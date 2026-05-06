@@ -2294,9 +2294,18 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
       if(emailChanged)payload.auth_user_id=null; // 재매핑 트리거
       let id;
       if(editing==="new"){
-        const r=await db.insWorker(payload);
-        id=r&&r[0]?r[0].id:null;
-        db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"worker.invite",target_table:"workers",target_id:String(id||""),payload});
+        const dup=(workers||[]).find(w=>(w.name||"").trim()===payload.name);
+        if(dup){
+          const msg=`이미 등록된 워커 "${dup.name}" 가 있습니다.\n파트: ${dup.part_id||"-"} · 활성: ${dup.is_active!==false?"ON":"OFF"} · 이메일: ${dup.email||"없음"}\n\n기존 행에 정보 덮어쓰고 활성화할까요?\n(취소하면 좌측 표에서 직접 편집 - 비활성 포함 토글 ON 필요)`;
+          if(!confirm(msg)){setError(`동일 이름 워커 존재: ${dup.name}. 좌측 표 "비활성 포함" 토글 ON 후 편집하세요.`);setSaving(false);return}
+          await db.updWorker(dup.id,payload);
+          id=dup.id;
+          db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"worker.activate",target_table:"workers",target_id:String(id),payload:{before:{email:dup.email||null,is_active:dup.is_active!==false},after:payload}});
+        }else{
+          const r=await db.insWorker(payload);
+          id=r&&r[0]?r[0].id:null;
+          db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"worker.invite",target_table:"workers",target_id:String(id||""),payload});
+        }
       }else{
         await db.updWorker(editing.id,payload);
         id=editing.id;
