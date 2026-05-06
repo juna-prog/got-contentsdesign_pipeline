@@ -2104,8 +2104,12 @@ function SignInScreen(){
     const e=email.trim();if(!e){setErr("회사 메일을 입력해주세요.");return}
     setLoading(true);setErr(null);
     try{
-      const{error}=await supabaseClient.auth.signInWithOtp({email:e,options:{shouldCreateUser:false,emailRedirectTo:window.location.origin}});
-      if(error)setErr("이메일 또는 권한을 확인할 수 없습니다. (관리자에게 사전 등록 요청)");
+      const{error}=await supabaseClient.auth.signInWithOtp({email:e,options:{shouldCreateUser:true,emailRedirectTo:window.location.origin}});
+      if(error){
+        const msg=String(error.message||error);
+        if(msg.toLowerCase().includes("domain"))setErr("회사 메일(@nm-neo.com)만 가입 가능합니다.");
+        else setErr("매직링크 발송 실패: "+msg);
+      }
       else setSent(true);
     }catch(ex){setErr(String(ex.message||ex))}
     setLoading(false);
