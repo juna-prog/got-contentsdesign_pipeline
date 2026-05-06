@@ -653,7 +653,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
     {workerPopup&&<div style={{position:"fixed",left:Math.min(workerPopup.x,window.innerWidth-340),top:Math.min(workerPopup.y,window.innerHeight-300),width:320,maxHeight:280,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:"var(--r)",boxShadow:"var(--sh2)",zIndex:200,overflow:"hidden",display:"flex",flexDirection:"column"}}>
       <div style={{padding:"10px 12px",borderBottom:"1px solid var(--bg3)",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
         <div><span style={{fontSize:14,fontWeight:700}}>{workerPopup.worker.name}</span>
-          {workerPopup.worker.is_part_lead&&<span style={{color:"var(--or)",fontSize:11,marginLeft:4}}>파트장</span>}
+          {workerPopup.worker.is_team_lead&&<span style={{color:"var(--or)",fontSize:11,marginLeft:4}}>관리자</span>}
           <div style={{fontSize:11,color:"var(--t4)"}}>{PART_LABELS[workerPopup.worker.part_id]||workerPopup.worker.part_id} - {workerPopup.tasks.length}건</div>
         </div>
         <button onClick={()=>setWP(null)} style={{background:"none",border:"none",fontSize:16,color:"var(--t4)",cursor:"pointer"}}>✕</button>
@@ -1741,7 +1741,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   }else{setTasks([]);setHistory([]);setDetailTab("tasks")}},[sel?.id]);
 
   const moveCard=async(gateId,itemId,dir)=>{
-    if(!user||(!user.is_lead&&!user.is_team_lead)){alert("파트장 권한 필요");return}
+    if(!user||(!user.is_lead&&!user.is_team_lead)){alert("게이트 승인 권한 필요");return}
     const items=g[gateId]||[];const idx=items.findIndex(c=>c.id===itemId);if(idx<0)return;
     const swapIdx=idx+dir;if(swapIdx<0||swapIdx>=items.length)return;
     const a=items[idx],b=items[swapIdx];
@@ -1755,7 +1755,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const onDrop=(e,gateId)=>{
     e.preventDefault();if(!dragId)return;
     const item=ct.find(c=>c.id===dragId);if(!item||item.gate===gateId){setDragId(null);return}
-    if(!canTransitGate(item,gateId,user)){const ng=GATES.find(g=>g.id===gateId);alert((ng?.approval==="lead2"?"팀장 승인":"파트장 권한")+" 필요");setDragId(null);return}
+    if(!canTransitGate(item,gateId,user)){const ng=GATES.find(g=>g.id===gateId);alert((ng?.approval==="lead2"?"관리자 승인":"게이트 승인 권한")+" 필요");setDragId(null);return}
     setReasonReq({
       title:item.name+" - 게이트 변경",
       oldVal:GATES.find(g=>g.id===item.gate)?.l+" "+GATES.find(g=>g.id===item.gate)?.s,
@@ -1799,7 +1799,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const fwdGate=()=>{
     if(!sel||!user)return;const gi=GATES.findIndex(g=>g.id===sel.gate);if(gi>=GATES.length-1)return;
     const nx=GATES[gi+1].id;
-    if(!canTransitGate(sel,nx,user)){const ng=GATES.find(g=>g.id===nx);alert((ng?.approval==="lead2"?"팀장 승인":"파트장 권한")+" 필요");return}
+    if(!canTransitGate(sel,nx,user)){const ng=GATES.find(g=>g.id===nx);alert((ng?.approval==="lead2"?"관리자 승인":"게이트 승인 권한")+" 필요");return}
     setReasonReq({
       title:sel.name+" - 게이트 변경",
       oldVal:GATES[gi].l+" "+GATES[gi].s,
@@ -1922,7 +1922,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
           {/* Gate progress + forward */}
           <div style={{display:"flex",gap:2,marginBottom:8}}>{GATES.map((g,i)=><div key={g.id} style={{flex:1,height:4,borderRadius:2,background:i<=gi?g.c:"var(--bg3)"}}/>)}</div>
           {nextGate&&<button className={"bt bt-g"+(canFwd?"":" disabled-ctrl")} onClick={canFwd?fwdGate:undefined}
-            title={canFwd?"":sel.locked?"팀장 잠금 해제 필요":nextGate.approval==="lead2"?"팀장 승인 필요":"파트장 권한 필요"}
+            title={canFwd?"":sel.locked?"관리자 잠금 해제 필요":nextGate.approval==="lead2"?"관리자 승인 필요":"게이트 승인 권한 필요"}
             style={{width:"100%",marginBottom:8}}>{nextGate.l} {nextGate.s}로 전환 →</button>}
           {sel.locked&&user?.is_team_lead&&<button className="bt" onClick={unlockContent} style={{width:"100%",marginBottom:8}}>🔓 잠금 해제</button>}
 
@@ -2339,7 +2339,7 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
   return<div className="modal-bg" onClick={closePanel}>
     <div className="modal" style={{maxWidth:1200,width:"96vw",maxHeight:"92vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
       <div className="modal-h" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span>⚙️ 관리자 페이지 <span style={{fontSize:11,fontWeight:400,color:"var(--t3)",marginLeft:8}}>팀장 전용 · {user.email}</span></span>
+        <span>⚙️ 관리자 페이지 <span style={{fontSize:11,fontWeight:400,color:"var(--t3)",marginLeft:8}}>관리자 전용 · {user.email}</span></span>
         <button className="bt bt-s" onClick={closePanel}>✕ 닫기</button>
       </div>
       <div className="tab-row" style={{padding:"0 18px",margin:0,borderBottom:"1px solid var(--bd)"}}>
@@ -2390,7 +2390,7 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
                       </td>
                       <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontFamily:"monospace",fontSize:11,color:w.email?"inherit":"var(--rd)"}}>{w.email||"(미설정)"}</td>
                       <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)"}}>{partLabel(w.part_id)}</td>
-                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11}}>{w.is_team_lead?"팀장":w.is_part_lead?"파트장":"-"}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11}}>{w.is_team_lead?"관리자":"사용자"}</td>
                       <td style={{padding:"5px 8px",borderBottom:"1px solid var(--bd)",fontSize:11}}>
                         <span style={{color:mapped?"var(--gn)":"var(--t4)"}}>{mapped?"✓ 연결":"⊝ 미연결"}</span>
                       </td>
@@ -2438,11 +2438,11 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
                 <div style={{display:"flex",flexDirection:"column",gap:4,padding:"8px 10px",background:"var(--bg2)",borderRadius:4,fontSize:12}}>
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
                     <input type="checkbox" checked={!!form.is_part_lead} onChange={e=>upd("is_part_lead",e.target.checked)}/>
-                    <span>★ 파트장 권한</span>
+                    <span>게이트 승인 권한 <span style={{color:"var(--t3)",fontWeight:400}}>(파트별 게이트 통과 처리)</span></span>
                   </label>
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
                     <input type="checkbox" checked={!!form.is_team_lead} onChange={e=>upd("is_team_lead",e.target.checked)}/>
-                    <span>★ 팀장 권한 (관리자 페이지 접근)</span>
+                    <span>★ 관리자 권한 <span style={{color:"var(--t3)",fontWeight:400}}>(관리자 페이지 접근)</span></span>
                   </label>
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
                     <input type="checkbox" checked={form.is_active!==false} onChange={e=>upd("is_active",e.target.checked)}/>
@@ -2938,7 +2938,7 @@ function JiraPreviewModal({content,tasks:allTasks,versions,workers,user,onClose,
   };
 
   const handleCreate=async()=>{
-    if(!user||(!user.is_lead&&!user.is_team_lead)){alert("파트장 권한 필요");return}
+    if(!user||(!user.is_lead&&!user.is_team_lead)){alert("게이트 승인 권한 필요");return}
     setCreating(true);
     const res=[];
     if(mode==="epic"){
@@ -3873,7 +3873,7 @@ function App(){
   const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
   const st=useMemo(()=>({t:ct.length,cr:ct.filter(c=>c.alert==="critical").length,w:ct.filter(c=>c.alert==="warning").length}),[ct]);
 
-  const roleLabel=user?(user.is_team_lead?(TEAM_MAP[user.part_id]||"콘텐츠기획")+"팀 팀장":user.is_lead?"파트장":"작업자"):"";
+  const roleLabel=user?(user.is_team_lead?"관리자":"사용자"):"";
 
   // ═══ Auth gate ═══
   if(!authReady)return<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#f8f9fb",fontSize:14,color:"var(--t3)"}}>인증 확인 중...</div>;
@@ -3894,7 +3894,7 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
-        {user&&user.is_team_lead&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title="관리자 페이지 (팀장 전용)" style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>⚙️ 관리자</button>}
+        {user&&user.is_team_lead&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title="관리자 페이지" style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>⚙️ 관리자</button>}
         {user&&<span className="user-badge" onClick={signOut} title="로그아웃">
           {(user.is_team_lead||user.is_lead)?"★":""}{user.name}<span className="role">{roleLabel}</span>
         </span>}
