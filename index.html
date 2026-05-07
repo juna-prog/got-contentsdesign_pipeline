@@ -1765,7 +1765,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
         const patch={gate:gateId,updated_at:new Date().toISOString()};if(lockNow)patch.locked=true;
         await db.logGate({content_id:item.id,from_gate:item.gate,to_gate:gateId,approved_by:user.name});
         await db.updContent(item.id,patch);
-        await db.addChange({content_id:item.id,field:"gate",old_value:item.gate,new_value:gateId,reason,changed_by:user.name});
+        await db.addChange({content_id:item.id,field:"gate",old_value:item.gate,new_value:gateId,reason,changed_by:user.name,actor_worker_id:user.id});
         setDragId(null);setReasonReq(null);onRefresh();
       }
     });
@@ -1809,7 +1809,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
         const patch={gate:nx,updated_at:new Date().toISOString()};if(lockNow)patch.locked=true;
         await db.logGate({content_id:sel.id,from_gate:sel.gate,to_gate:nx,approved_by:user.name});
         await db.updContent(sel.id,patch);
-        await db.addChange({content_id:sel.id,field:"gate",old_value:sel.gate,new_value:nx,reason,changed_by:user.name});
+        await db.addChange({content_id:sel.id,field:"gate",old_value:sel.gate,new_value:nx,reason,changed_by:user.name,actor_worker_id:user.id});
         setSel(null);setReasonReq(null);onRefresh();
       }
     });
@@ -1849,7 +1849,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
       oldVal:"잠금",newVal:"해제",
       onConfirm:async(reason)=>{
         await db.updContent(sel.id,{locked:false});
-        await db.addChange({content_id:sel.id,field:"locked",old_value:"true",new_value:"false",reason,changed_by:user.name});
+        await db.addChange({content_id:sel.id,field:"locked",old_value:"true",new_value:"false",reason,changed_by:user.name,actor_worker_id:user.id});
         setReasonReq(null);onRefresh();
       }
     });
@@ -3647,7 +3647,7 @@ function ImportModal({user,workers,onClose,onDone}){
         const upd={gate:c.gate||'G0',category:c.category,owner:c.owner,start_date:c.start_date,end_date:c.end_date,doc_url:c.doc_url,notes:c.notes,imported_at:now};
         if(c.version_id)upd.version_id=c.version_id;  /* xlsx에 목표 값 있으면 반영, 없으면 기존 값 유지 */
         await db.updContent(c._id,upd);
-        await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name}).catch(()=>null);
+        await db.addChange({content_id:c._id,field:'import',old_value:null,new_value:file.name,reason:`import: ${file.name}`,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
       }
       // 콘텐츠 id 매핑
       const contentIdByKey=new Map();
