@@ -86,7 +86,7 @@ const supabaseClient=window.supabase.createClient(SU,SK,{auth:{persistSession:tr
 let currentSession=null;
 const FH=()=>({"apikey":SK,"Authorization":"Bearer "+(currentSession?.access_token||SK),"Content-Type":"application/json"});
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH(),Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[])};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null)};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -1861,6 +1861,77 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
       }
     });
   };
+  const deleteContent=async()=>{
+    if(!sel||!user)return;
+    if(!user.is_team_lead){alert("관리자만 삭제 가능");return}
+    const cTasks=tasks||[];
+    const jiraLinkedTasks=cTasks.filter(t=>t.jira_url);
+    const hasEpic=!!sel.jira_epic_key;
+    const jiraCount=jiraLinkedTasks.length+(hasEpic?1:0);
+    // 1차: 삭제 의도
+    const msg1=`'${sel.name}' 와 하위 작업 ${cTasks.length}건을 삭제합니다.\n`+
+      (jiraCount>0?`JIRA 연결: ${hasEpic?"Epic 1건, ":""}태스크 ${jiraLinkedTasks.length}건\n\n`:"\n")+
+      `정말 삭제하시겠습니까? (되돌릴 수 없음)`;
+    if(!confirm(msg1))return;
+    // 2차: JIRA 처리 옵션
+    let closeJira=false;
+    if(jiraCount>0){
+      closeJira=confirm(
+        `JIRA 일감 ${jiraCount}건도 'Closed' 로 처리할까요?\n\n`+
+        `확인 = JIRA 일감 닫기 큐 추가 (operator 가 별도 처리)\n`+
+        `취소 = 트래커에서만 삭제 (JIRA 그대로 유지)`
+      );
+    }
+    // 3차: 사유
+    setReasonReq({
+      title:`'${sel.name}' 삭제`,
+      oldVal:`존재 (작업 ${cTasks.length}건${jiraCount>0?`, JIRA ${jiraCount}건`:""})`,
+      newVal:closeJira?"삭제됨 (JIRA 닫기 큐)":"삭제됨 (트래커)",
+      onConfirm:async(reason)=>{
+        try{
+          // 감사 로그 (cascade 영향 X)
+          await db.addAudit({
+            actor_worker_id:user.id,
+            actor_email:user.email,
+            action_type:'content.delete',
+            target_table:'contents',
+            target_id:String(sel.id),
+            payload:{
+              name:sel.name,type:sel.type,version_id:sel.version_id,gate:sel.gate,
+              task_count:cTasks.length,jira_count:jiraCount,close_jira:closeJira,reason,
+              jira_epic_key:sel.jira_epic_key||null,
+              jira_task_urls:jiraLinkedTasks.map(t=>t.jira_url)
+            }
+          });
+          // 기존 jira_creation_log + gate_transitions 정리 (FK 회피)
+          await db.delJiraLogsByContent(sel.id);
+          await db.delGateLogsByContent(sel.id);
+          // closeJira 옵션: 닫기 큐 신규 INSERT (FK 안 거는 형태 - content_id/task_id 미설정, payload 만)
+          if(closeJira){
+            if(hasEpic){
+              await db.addJiraLog({
+                operation_type:'close_epic',status:'pending',
+                payload:{jira_epic_key:sel.jira_epic_key,content_name:sel.name,reason,deleted_content_id:sel.id}
+              });
+            }
+            for(const t of jiraLinkedTasks){
+              await db.addJiraLog({
+                operation_type:'close_subtask',status:'pending',
+                payload:{jira_url:t.jira_url,task_title:t.title||"",content_name:sel.name,reason,deleted_task_id:t.id}
+              });
+            }
+          }
+          // 콘텐츠 삭제 (CASCADE: tasks → task_assignees, task_dependencies, schedule_changes)
+          await db.delContent(sel.id);
+          setSel(null);
+          setReasonReq(null);
+          onRefresh();
+        }catch(e){
+          alert("삭제 실패: "+(e.message||e));
+        }
+      }
+    });
+  };
 
   return<div className="split" ref={splitRef}>
     <div className="split-left">
@@ -1917,7 +1988,10 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
               <span>{tm.i}</span>{sel.name}
               {sel.locked&&<span title="잠금" style={{fontSize:14}}>🔒</span>}
             </div>
-            <button onClick={()=>setSel(null)} style={{background:"none",border:"none",fontSize:18,color:"var(--t4)",cursor:"pointer"}}>✕</button>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              {user?.is_team_lead&&<button onClick={deleteContent} title="콘텐츠 + 하위 작업 삭제 (관리자)" style={{background:"none",border:"none",fontSize:14,color:"var(--rd)",cursor:"pointer",padding:"2px 6px"}}>🗑</button>}
+              <button onClick={()=>setSel(null)} style={{background:"none",border:"none",fontSize:18,color:"var(--t4)",cursor:"pointer"}}>✕</button>
+            </div>
           </div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
             {v&&<B ch={v.label+" · "+v.target_date} c="b-p"/>}
@@ -3877,7 +3951,17 @@ function App(){
     a.click();URL.revokeObjectURL(url);
   };
 
-  const fc=useMemo(()=>fv==="all"?ct:ct.filter(c=>c.version_id===fv),[ct,fv]);
+  const fc=useMemo(()=>{
+    if(fv==="all")return ct;
+    return ct.filter(c=>{
+      const cTasks=(allT||[]).filter(t=>t.content_id===c.id);
+      // 태스크 없는 콘텐츠는 자체 version_id 로 매칭
+      if(cTasks.length===0)return c.version_id===fv;
+      // 태스크 있는 경우: 효과적 버전 (task.version_id || content.version_id) 중 하나라도 매칭되면 포함
+      // → 모든 태스크가 다른 버전(예: 미정)으로 이동되면 자동 제외
+      return cTasks.some(t=>(t.version_id||c.version_id)===fv);
+    });
+  },[ct,fv,allT]);
   const st=useMemo(()=>({t:ct.length,cr:ct.filter(c=>c.alert==="critical").length,w:ct.filter(c=>c.alert==="warning").length}),[ct]);
 
   const roleLabel=user?(user.is_team_lead?"관리자":"사용자"):"";
