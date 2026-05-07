@@ -687,7 +687,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
 }
 
 /* ═══ TASK SHEET ═══ */
-function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations,onRefresh}){
+function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations,onRefresh,user}){
   const teamTab=filters?.tsTeam||"all";const setTT=v=>onFilterChange?.("tsTeam",v);
   const partFilter=filters?.tsPart||"all";const setPF=v=>onFilterChange?.("tsPart",v);
   const statusFilter=filters?.tsStatus||"all";const setSF=v=>onFilterChange?.("tsStatus",v);
@@ -697,8 +697,12 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
   const sortBy=filters?.tsSort||"default";const setSortBy=v=>onFilterChange?.("tsSort",v);
   const[justSavedVer,setJustSavedVer]=useState(null);
   const chgRowVersion=async(tid,vid)=>{
+    const t=(tasks||[]).find(x=>x.id===tid);
+    const oldVid=t?.version_id||null;const newVid=vid||null;
+    if(oldVid===newVid)return;
     try{
-      await db.updTask(tid,{version_id:vid||null});
+      await db.updTask(tid,{version_id:newVid});
+      if(user)db.addChange({content_id:t?.content_id||null,task_id:tid,field:"version_id",old_value:oldVid||"-",new_value:newVid||"-",reason:"버전 재배정",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
       setJustSavedVer(tid);
       setTimeout(()=>setJustSavedVer(p=>p===tid?null:p),800);
       window.showToast&&window.showToast("버전 저장됨");
@@ -1788,8 +1792,11 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const chgTaskVersion=async(tid,vid)=>{
     const t=tasks.find(x=>x.id===tid);if(!t)return;
     if(!canEditTaskStatus(t,user)){alert("본인 태스크만 변경 가능");return}
+    const oldVid=t.version_id||null;const newVid=vid||null;
+    if(oldVid===newVid)return;
     try{
-      await db.updTask(tid,{version_id:vid||null});
+      await db.updTask(tid,{version_id:newVid});
+      db.addChange({content_id:t.content_id||sel?.id||null,task_id:tid,field:"version_id",old_value:oldVid||"-",new_value:newVid||"-",reason:"버전 재배정",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
       setJustSavedVer(tid);
       setTimeout(()=>setJustSavedVer(p=>p===tid?null:p),800);
       window.showToast&&window.showToast("버전 저장됨");
@@ -3922,7 +3929,7 @@ function App(){
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load} deps={deps} allT={allT} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk} dependencies={deps} depViolations={depV}/>}
         {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} versions={vr} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
-        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV} onRefresh={load}/>}
+        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV} onRefresh={load} user={user}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="deps"&&<DepViolationView depViolations={depV} tasks={allT} workers={wk} contents={ct} onRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
