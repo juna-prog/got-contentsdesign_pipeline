@@ -15,6 +15,12 @@ JIRA Custom Field 매핑 (env 로 override 가능):
   - create_subtask        → POST issue (Sub-Task / Task) + 모드별 분기
                             * parent_task 모드: payload.fields.parent.key 그대로
                             * epic_link 모드: 생성 후 PUT customfield_10008 = target_epic_key
+  - update_assignee       → PUT issue (assignee 변경)
+                            payload: {issue_key, target_account}
+  - update_reporter       → PUT issue (reporter 변경)
+                            payload: {issue_key, target_account}
+  - update_meta           → PUT issue (assignee + reporter 동시 변경)
+                            payload: {issue_key, assignee?, reporter?}
 
 CLI:
   python jira_rest_operator.py                      # pending 전체 처리
@@ -152,6 +158,57 @@ def handle_create_epic(creds, log, dry_run):
     return {"key": key, "url": url}
 
 
+def handle_update_assignee(creds, log, dry_run):
+    """PUT issue assignee. payload: {issue_key, target_account}."""
+    payload = log["payload"]
+    issue_key = payload["issue_key"]
+    account = payload["target_account"]
+    if dry_run:
+        print(f"  [DRY] PUT /rest/api/2/issue/{issue_key} assignee={account}")
+        return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+    jira_request(creds, "PUT", f"/rest/api/2/issue/{issue_key}", {"fields": {"assignee": {"name": account}}})
+    print(f"  assignee 변경: {issue_key} → {account}")
+    return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+
+
+def handle_update_reporter(creds, log, dry_run):
+    """PUT issue reporter. payload: {issue_key, target_account}."""
+    payload = log["payload"]
+    issue_key = payload["issue_key"]
+    account = payload["target_account"]
+    if dry_run:
+        print(f"  [DRY] PUT /rest/api/2/issue/{issue_key} reporter={account}")
+        return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+    jira_request(creds, "PUT", f"/rest/api/2/issue/{issue_key}", {"fields": {"reporter": {"name": account}}})
+    print(f"  reporter 변경: {issue_key} → {account}")
+    return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+
+
+def handle_update_meta(creds, log, dry_run):
+    """PUT issue assignee + reporter 동시 (1회 호출). payload: {issue_key, assignee?, reporter?}."""
+    payload = log["payload"]
+    issue_key = payload["issue_key"]
+    fields = {}
+    if payload.get("assignee"):
+        fields["assignee"] = {"name": payload["assignee"]}
+    if payload.get("reporter"):
+        fields["reporter"] = {"name": payload["reporter"]}
+    if not fields:
+        raise RuntimeError("update_meta: assignee/reporter 둘 다 없음")
+    parts = []
+    if "assignee" in fields:
+        parts.append(f"assignee={payload['assignee']}")
+    if "reporter" in fields:
+        parts.append(f"reporter={payload['reporter']}")
+    desc = " ".join(parts)
+    if dry_run:
+        print(f"  [DRY] PUT /rest/api/2/issue/{issue_key} {desc}")
+        return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+    jira_request(creds, "PUT", f"/rest/api/2/issue/{issue_key}", {"fields": fields})
+    print(f"  meta 변경: {issue_key} {desc}")
+    return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+
+
 def handle_create_subtask(creds, log, dry_run):
     """parent_task / epic_link 두 모드 처리."""
     payload = log["payload"]
@@ -255,6 +312,10 @@ def process_log(creds, log, dry_run):
             r = handle_create_epic(creds, log, dry_run)
         elif op == "create_subtask":
             r = handle_create_subtask(creds, log, dry_run)
+        elif op == "update_assignee":
+            r = handle_update_assignee(creds, log, dry_run)
+        elif op == "update_reporter":
+            r = handle_update_reporter(creds, log, dry_run)
         else:
             raise RuntimeError(f"미지원 operation_type: {op}")
         backfill_success(log, r["key"], r["url"], dry_run)
