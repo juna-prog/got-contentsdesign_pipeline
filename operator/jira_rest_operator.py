@@ -21,6 +21,9 @@ JIRA Custom Field 매핑 (env 로 override 가능):
                             payload: {issue_key, target_account}
   - update_meta           → PUT issue (assignee + reporter 동시 변경)
                             payload: {issue_key, assignee?, reporter?}
+  - update_dates          → PUT issue (duedate = end_date 동기, JIRA Server 표준 필드)
+                            payload: {issue_key, end_date, start_date?}
+                            start_date 는 customfield ID 미확정 = 후속 (현재 duedate 만)
 
 CLI:
   python jira_rest_operator.py                      # pending 전체 처리
@@ -209,6 +212,33 @@ def handle_update_meta(creds, log, dry_run):
     return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
 
 
+def handle_update_dates(creds, log, dry_run):
+    """PUT issue duedate. payload: {issue_key, end_date, start_date?}.
+
+    JIRA Server 의 표준 `duedate` 필드만 동기 (yyyy-mm-dd). start_date 는 customfield 라
+    별도 customfield ID 확정 후 추후 추가 (env JIRA_START_DATE_FIELD 로 override 시 동기).
+    """
+    payload = log["payload"]
+    issue_key = payload["issue_key"]
+    end_date = payload.get("end_date")
+    start_date = payload.get("start_date")
+    fields = {}
+    if end_date:
+        fields["duedate"] = end_date
+    start_field = os.environ.get("JIRA_START_DATE_FIELD")
+    if start_field and start_date:
+        fields[start_field] = start_date
+    if not fields:
+        raise RuntimeError("update_dates: end_date / start_date 둘 다 없음")
+    desc = " ".join(f"{k}={v}" for k, v in fields.items())
+    if dry_run:
+        print(f"  [DRY] PUT /rest/api/2/issue/{issue_key} {desc}")
+        return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+    jira_request(creds, "PUT", f"/rest/api/2/issue/{issue_key}", {"fields": fields})
+    print(f"  dates 변경: {issue_key} {desc}")
+    return {"key": issue_key, "url": f"{JIRA_BASE}/browse/{issue_key}"}
+
+
 def handle_create_subtask(creds, log, dry_run):
     """parent_task / epic_link 두 모드 처리."""
     payload = log["payload"]
@@ -316,6 +346,10 @@ def process_log(creds, log, dry_run):
             r = handle_update_assignee(creds, log, dry_run)
         elif op == "update_reporter":
             r = handle_update_reporter(creds, log, dry_run)
+        elif op == "update_meta":
+            r = handle_update_meta(creds, log, dry_run)
+        elif op == "update_dates":
+            r = handle_update_dates(creds, log, dry_run)
         else:
             raise RuntimeError(f"미지원 operation_type: {op}")
         backfill_success(log, r["key"], r["url"], dry_run)
