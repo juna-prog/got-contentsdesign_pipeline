@@ -1,0 +1,4 @@
+{
+  "user": "your_jira_username",
+  "pass": "your_jira_password_or_PAT"
+}

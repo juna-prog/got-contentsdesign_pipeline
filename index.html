@@ -86,7 +86,7 @@ const supabaseClient=window.supabase.createClient(SU,SK,{auth:{persistSession:tr
 let currentSession=null;
 const FH=()=>({"apikey":SK,"Authorization":"Bearer "+(currentSession?.access_token||SK),"Content-Type":"application/json"});
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH(),Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null)};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),jiraQueueStatus:()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at,contents(name,type),tasks(title,title_object)&order=created_at.desc&limit=80").catch(()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at&order=created_at.desc&limit=80").catch(()=>[])),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null)};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -2306,17 +2306,25 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
   const[auditLoading,setAuditLoading]=useState(false);
   const[auditFilter,setAuditFilter]=useState({actor:"",action:"",table:""});
   const[expanded,setExpanded]=useState(null);
+  const[jiraQueue,setJiraQueue]=useState([]);
+  const[jiraQueueLoading,setJiraQueueLoading]=useState(false);
+  const[jiraStatusFilter,setJiraStatusFilter]=useState("all"); // all / pending / done / failed
 
   const reload=useCallback(async()=>{
     setLoading(true);
     const[ws,ps]=await Promise.all([db.workers().catch(()=>[]),db.parts().catch(()=>[])]);
     setWorkers(ws||[]);setParts(ps||[]);setLoading(false);
   },[]);
+  const reloadJiraQueue=useCallback(()=>{
+    setJiraQueueLoading(true);
+    db.jiraQueueStatus().then(rows=>{setJiraQueue(rows||[]);setJiraQueueLoading(false)});
+  },[]);
   useEffect(()=>{reload()},[reload]);
   useEffect(()=>{if(tab==="audit"){
     setAuditLoading(true);
     db.auditLog().then(rows=>{setAudit(rows||[]);setAuditLoading(false)});
   }},[tab]);
+  useEffect(()=>{if(tab==="jira"){reloadJiraQueue()}},[tab,reloadJiraQueue]);
 
   const partOptions=useMemo(()=>{
     const fromDb=(parts||[]).map(p=>({id:p.id,label:p.label||PART_LABELS[p.id]||p.id}));
@@ -2427,6 +2435,7 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
         <button className={tab==="members"?"on":""} onClick={()=>setTab("members")}>👥 사용자 ({workers.length})</button>
         <button className={tab==="audit"?"on":""} onClick={()=>setTab("audit")}>📜 활동 로그</button>
         <button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>
+        <button className={tab==="jira"?"on":""} onClick={()=>setTab("jira")}>🎫 JIRA 큐</button>
         <button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>
       </div>
       <div style={{flex:1,overflow:"auto",padding:14}}>
@@ -2623,7 +2632,108 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
         </div>
       </div>}
 
-      {/* ━━ Tab 4: 확장 슬롯 ━━ */}
+      {/* ━━ Tab 4: JIRA 큐 ━━ */}
+      {tab==="jira"&&<div style={{padding:8,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+        {(()=>{
+          const rows=jiraQueue||[];
+          const pending=rows.filter(r=>r.status==="pending");
+          const failed=rows.filter(r=>r.status==="failed");
+          const done=rows.filter(r=>r.status==="done");
+          const lastDone=done.find(r=>r.executed_at);
+          const lastFail=failed.find(r=>r.executed_at);
+          const filtered=jiraStatusFilter==="all"?rows:rows.filter(r=>r.status===jiraStatusFilter);
+          const OP_LABEL={"create_epic":"Epic 생성","create_subtask":"Sub-Task 생성","close_epic":"Epic 닫기","close_subtask":"Sub-Task 닫기"};
+          const ST_COLOR={"pending":"#d97706","done":"#059669","failed":"#dc2626"};
+          const ST_LABEL={"pending":"대기","done":"완료","failed":"실패"};
+          const fmt=(ts)=>ts?new Date(ts).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"-";
+          const refLabel=(r)=>{
+            const c=r.contents;const t=r.tasks;
+            if(t&&(t.title||t.title_object))return"태스크 #"+r.task_id+" "+(t.title_object||t.title);
+            if(c&&c.name)return"콘텐츠 #"+r.content_id+" "+c.name;
+            if(r.task_id)return"태스크 #"+r.task_id;
+            if(r.content_id)return"콘텐츠 #"+r.content_id;
+            return"-";
+          };
+          return<>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:12}}>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>대기 (pending)</div>
+                <div style={{fontSize:24,fontWeight:700,color:pending.length>0?"#d97706":"var(--gn)"}}>{pending.length}</div>
+              </div>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>완료 (최근 80건)</div>
+                <div style={{fontSize:24,fontWeight:700,color:"var(--gn)"}}>{done.length}</div>
+              </div>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>실패</div>
+                <div style={{fontSize:24,fontWeight:700,color:failed.length>0?"var(--rd)":"var(--t3)"}}>{failed.length}</div>
+              </div>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>마지막 처리</div>
+                <div style={{fontSize:13,fontWeight:600,color:"var(--t2)"}}>{fmt(lastDone?.executed_at)}</div>
+                {lastFail&&<div style={{fontSize:10,color:"var(--rd)",marginTop:2}}>실패: {fmt(lastFail.executed_at)}</div>}
+              </div>
+            </div>
+            <div style={{padding:"10px 12px",background:"var(--bg3)",borderRadius:8,fontSize:11,color:"var(--t3)",marginBottom:10,lineHeight:1.7}}>
+              <div style={{fontWeight:600,color:"var(--t2)",marginBottom:4}}>🛠 operator 실행 안내</div>
+              큐는 자동 처리되지 않습니다. 운영자(현재: juna)가 1주 1회 또는 pending 누적 시 직접 실행합니다.
+              <div style={{marginTop:6,padding:"6px 8px",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"Consolas,monospace",fontSize:11,color:"var(--t2)"}}>
+                cd operator &amp;&amp; python jira_rest_operator.py
+              </div>
+              <div style={{marginTop:6,fontSize:10,color:"var(--t4)"}}>
+                자세한 절차: <code>docs/phase6_jira_operator.md</code> · 자격증명: <code>operator/.jira_creds.json</code> 또는 env (JIRA_USER / JIRA_PASS)
+              </div>
+              <div style={{marginTop:4,fontSize:10,color:"var(--rd)"}}>
+                ⚠ <code>close_epic</code> / <code>close_subtask</code> op_type 은 v1 operator 미구현. 큐 적재만 됨. JIRA 일감 닫기는 현재 수동.
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+              <div style={{display:"flex",gap:3}}>
+                {[["all","전체",rows.length],["pending","대기",pending.length],["done","완료",done.length],["failed","실패",failed.length]].map(([k,l,n])=>
+                  <button key={k} className={"bt bt-s"+(jiraStatusFilter===k?" on":"")} onClick={()=>setJiraStatusFilter(k)} style={{fontSize:11}}>{l} ({n})</button>
+                )}
+              </div>
+              <button className="bt bt-s" onClick={reloadJiraQueue} disabled={jiraQueueLoading} style={{marginLeft:"auto",fontSize:11}}>{jiraQueueLoading?"로딩...":"🔄 새로고침"}</button>
+            </div>
+            <div style={{flex:1,overflow:"auto",border:"1px solid var(--bd)",borderRadius:6}}>
+              <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+                <thead style={{position:"sticky",top:0,background:"var(--bg2)",zIndex:1}}>
+                  <tr style={{borderBottom:"1px solid var(--bd)"}}>
+                    <th style={{textAlign:"left",padding:"6px 8px",width:50}}>#</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",width:80}}>상태</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",width:120}}>op_type</th>
+                    <th style={{textAlign:"left",padding:"6px 8px"}}>대상</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",width:130}}>JIRA</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",width:110}}>등록</th>
+                    <th style={{textAlign:"left",padding:"6px 8px",width:110}}>처리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length===0&&<tr><td colSpan="7" style={{padding:20,textAlign:"center",color:"var(--t4)"}}>{jiraQueueLoading?"로딩 중...":"표시할 큐가 없습니다."}</td></tr>}
+                  {filtered.map(r=>{
+                    const op=OP_LABEL[r.operation_type]||r.operation_type;
+                    const isClose=r.operation_type==="close_epic"||r.operation_type==="close_subtask";
+                    return<tr key={r.id} style={{borderBottom:"1px solid var(--bg3)"}}>
+                      <td style={{padding:"6px 8px",color:"var(--t4)"}}>{r.id}</td>
+                      <td style={{padding:"6px 8px"}}><span style={{color:ST_COLOR[r.status]||"var(--t3)",fontWeight:600}}>{ST_LABEL[r.status]||r.status}</span></td>
+                      <td style={{padding:"6px 8px"}}>
+                        {op}
+                        {isClose&&<span title="operator v1 미구현" style={{marginLeft:4,color:"var(--rd)",fontSize:10}}>⚠</span>}
+                      </td>
+                      <td style={{padding:"6px 8px",maxWidth:300,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={refLabel(r)}>{refLabel(r)}{r.target_epic_key&&<span style={{color:"var(--t4)",marginLeft:6,fontSize:10}}>→ Epic {r.target_epic_key}</span>}</td>
+                      <td style={{padding:"6px 8px"}}>{r.result_url?<a href={r.result_url} target="_blank" rel="noopener" style={{color:"var(--ac)",textDecoration:"none"}}>{r.result_key}</a>:r.error_message?<span style={{color:"var(--rd)",fontSize:10}} title={r.error_message}>오류</span>:<span style={{color:"var(--t4)"}}>-</span>}</td>
+                      <td style={{padding:"6px 8px",color:"var(--t4)"}}>{fmt(r.created_at)}</td>
+                      <td style={{padding:"6px 8px",color:"var(--t4)"}}>{fmt(r.executed_at)}</td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>;
+        })()}
+      </div>}
+
+      {/* ━━ Tab 5: 확장 슬롯 ━━ */}
       {tab==="ext"&&<div style={{padding:30,textAlign:"center"}}>
         <div style={{fontSize:14,color:"var(--t2)",marginBottom:16,fontWeight:700}}>🔌 확장 슬롯 (Phase 2~)</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,maxWidth:900,margin:"0 auto"}}>
@@ -2656,6 +2766,14 @@ function JiraSyncModal({tasks,onClose,onDone}){
   const[progress,setProgress]=useState({done:0,total:0,errors:[]});
   const[results,setResults]=useState(null);
   const[manualText,setManualText]=useState("");
+  const[opStatus,setOpStatus]=useState(null); // {pending, lastExec, lastFail}
+  useEffect(()=>{db.jiraQueueStatus().then(rows=>{
+    const r=rows||[];
+    const pending=r.filter(x=>x.status==="pending").length;
+    const lastDone=r.find(x=>x.status==="done"&&x.executed_at);
+    const lastFail=r.find(x=>x.status==="failed"&&x.executed_at);
+    setOpStatus({pending,lastExec:lastDone?.executed_at||null,lastFail:lastFail?.executed_at||null});
+  })},[]);
 
   const jiraTasks=useMemo(()=>(tasks||[]).filter(t=>t.jira_url),[tasks]);
   const extractKey=(url)=>{const m=(url||"").match(/([A-Z]+-\d+)/);return m?m[1]:null};
@@ -2713,7 +2831,7 @@ function JiraSyncModal({tasks,onClose,onDone}){
         }
       }catch(e){
         if(e.message?.includes("Failed to fetch")){
-          errors.push("CORS 차단 - JIRA 서버에 직접 접근할 수 없습니다. 수동 모드를 사용하세요.");
+          errors.push("CORS 차단 - 브라우저에서 JIRA 서버 직접 호출 불가. 수동 모드(붙여넣기)를 사용하거나, 트래커→JIRA 일감 생성은 operator 노드(jira_rest_operator.py)에서 처리하세요.");
           break;
         }
         errors.push("네트워크 오류: "+e.message);
@@ -2831,10 +2949,21 @@ function JiraSyncModal({tasks,onClose,onDone}){
         </div>
 
         {mode==="auto"&&<>
-          <div style={{fontSize:12,color:"var(--t3)",marginBottom:10}}>
-            JIRA REST API로 {jiraTasks.length}건의 상태를 자동 조회합니다.
-            사내 네트워크에서만 동작합니다.
+          <div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6}}>
+            JIRA REST API로 {jiraTasks.length}건의 상태를 자동 조회합니다 (방향: <b>JIRA → 트래커</b>).
+            <br/>사내 망 + JIRA 서버가 CORS 허용한 도메인에서만 동작. 차단 시 <b>수동 모드</b>로 전환하세요.
           </div>
+          {opStatus&&<div style={{padding:"8px 10px",background:"var(--bg3)",borderRadius:6,fontSize:11,color:"var(--t3)",marginBottom:10,lineHeight:1.6}}>
+            <div style={{fontWeight:600,color:"var(--t2)",marginBottom:3}}>📋 트래커 → JIRA (일감 생성) 큐 상태</div>
+            <div>
+              대기 <b style={{color:opStatus.pending>0?"var(--rd)":"var(--gn)"}}>{opStatus.pending}</b>건
+              {opStatus.lastExec&&<> · 마지막 처리 <b>{new Date(opStatus.lastExec).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</b></>}
+              {!opStatus.lastExec&&<> · 처리 이력 없음</>}
+            </div>
+            <div style={{fontSize:10,color:"var(--t4)",marginTop:2}}>
+              일감 생성/Epic 연결은 operator 노드 (operator/jira_rest_operator.py) 가 처리. 자동 동기화 아님.
+            </div>
+          </div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
             <div>
               <label style={{fontSize:11,color:"var(--t4)",fontWeight:500}}>JIRA ID</label>

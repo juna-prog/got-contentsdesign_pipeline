@@ -1,6 +1,59 @@
 # Phase 6 JIRA 양방향 sync - Operator Workflow
 
-> 파이프라인 트래커는 source-of-truth. 실제 JIRA 호출은 operator(Claude + mcp__jira)가 대기열 처리.
+> 파이프라인 트래커는 source-of-truth. 실제 JIRA 호출은 operator (REST 직접 - jira_rest_operator.py) 가 큐 처리. MCP 한계 3종 우회 완료 (P2, 2026-04-28). 자격증명은 env 또는 operator/.jira_creds.json (gitignored).
+
+## 빠른 시작 (운영자)
+
+```
+# Windows
+operator\run.bat              # pending 전체 처리
+operator\run.bat --dry-run    # 실 호출 없이 plan 출력
+operator\run.bat --limit 1    # 1건만 (smoketest)
+operator\run.bat --log-id 99  # 특정 log id 만
+
+# bash / WSL
+cd operator && python jira_rest_operator.py
+```
+
+자격증명 미설정 시 `--dry-run` 은 실행되며, 그 외에는 안내 메시지와 함께 종료됩니다.
+
+## 1주 1회 운영 루틴 (권장)
+
+**매주 월요일 오전** (또는 pending 누적 시 즉시):
+
+1. AdminPanel → 🎫 JIRA 큐 탭 진입
+2. **대기 (pending)** 카운트 확인
+   - 0 건 → 스킵
+   - 1 ~ N 건 → 다음 단계
+3. **실패 (failed)** 카운트 확인 - 있으면 사유 분석 후 재처리 여부 결정
+4. operator 노드에서 `run.bat` 실행 (자격증명 + 네트워크 사내망 OK)
+5. 실행 종료 후 트래커 새로고침 → 큐 탭에서 pending → done 전환 확인 + tasks.jira_url / contents.jira_epic_key 백필 확인
+6. JIRA 보드에서 생성된 이슈 1~2건 샘플 확인 (reporter / Epic Link / labels / fixVersions 정상)
+
+**모니터링 신호** (pending 누적 = 운영자 부담):
+- pending > 30 → 1주 주기를 단축하거나 일감 생성 빈도 조정
+- 실패율 > 10% → 자격증명 만료 / JIRA 권한 변경 가능성, 즉시 점검
+
+## Windows Task Scheduler (선택, 자동 실행)
+
+수동 실행이 부담이면 Windows 작업 스케줄러로 등록:
+
+1. 작업 스케줄러 → "기본 작업 만들기"
+2. 트리거: 매주 월요일 09:00
+3. 동작: 프로그램 시작 → `<repo>\operator\run.bat`
+4. 시작 위치: `<repo>\operator`
+5. 로그 확인: 작업 스케줄러 기록 탭 + JIRA 큐 탭의 최근 처리 시각
+
+⚠ 자격증명 파일이 잠긴 사용자 계정에 있어야 task account 가 접근 가능. 또는 환경변수 등록.
+
+## 자격증명 갱신 (PAT 만료 등)
+
+JIRA 비밀번호 / Personal Access Token 만료 시:
+
+1. JIRA 웹 → 프로필 → 보안 → API token / 비밀번호 갱신
+2. `operator/.jira_creds.json` 의 `pass` 필드 업데이트 (template 은 `.jira_creds.json.template` 참고)
+3. `operator\run.bat --dry-run` 으로 자격증명 로딩 확인
+4. 정상이면 다음 pending 처리 시 자동 사용
 
 ## 데이터 흐름
 
@@ -355,6 +408,45 @@ ImportModal.run 흐름에 `db.workTypes()` 1회 호출 추가 + 진단 로그 (`
 **잔여 (별도 트랙)**:
 - Sprint 자동 투입 (`/rest/agile/1.0/board/1221/sprint`) - P3 (사용자 합의: 추후 설계)
 - work_types seed 4파트 확장 (필요 시)
+
+## 2026-05-07 - close_epic / close_subtask op_type 명세 (큐 적재만, operator 미구현)
+
+**배경**: 콘텐츠 카드 삭제 (commit f29e342) 시 사용자가 "JIRA 일감도 같이 닫기" 옵션 선택하면 `jira_creation_log` 에 `close_epic` / `close_subtask` pending 적재. 현재 operator v1 은 미처리 → AdminPanel JIRA 큐 탭에 ⚠ 배지 표시.
+
+**큐 row shape** (UI 가 INSERT):
+```
+{
+  status: "pending",
+  operation_type: "close_epic" | "close_subtask",
+  content_id: null,                  // FK 회피 (콘텐츠는 이미 DELETE)
+  task_id: null,                     // 동일
+  payload: {
+    jira_key: "PROJECTT-39403",
+    jira_url: "https://jira.nmn.io/browse/PROJECTT-39403",
+    reason: "사용자 입력 사유",
+    deleted_content_name: "...",
+    deleted_content_type: "...",
+    actor_email: "..."
+  }
+}
+```
+
+**operator 처리 안 (v2 후속)**:
+1. `GET /rest/api/2/issue/{key}/transitions` → 가능한 transition 조회
+2. "Done" / "Closed" / "Resolved" 중 하나의 transition id 선택
+3. `POST /rest/api/2/issue/{key}/transitions` body `{transition:{id}, fields:{resolution:{name:"Done"}}}` 또는 fields 없이
+4. 코멘트 추가: `POST /rest/api/2/issue/{key}/comment` body `{body: "트래커에서 콘텐츠 삭제. 사유: {reason}"}`
+5. 백필: log status=done / executed_at / executed_by
+
+**현재 운영 한계**:
+- v1 operator 가 `미지원 operation_type` 으로 fail 처리 → status=failed 로 빠짐 (큐는 정리됨)
+- 또는 사용자가 큐를 그대로 두고 JIRA 웹에서 수동 닫기 + 큐 row 수동 삭제
+
+**임시 회피**:
+- 카드 삭제 시 "JIRA 같이 닫기" 옵션 미사용 (트래커만 삭제) → JIRA 일감은 관리자가 별도로 처리
+- 또는 닫을 일감이 적으면 JIRA 웹에서 수동 transition
+
+**v2 우선순위**: 닫기 누적 빈도 보고 결정. 현 시점 (2026-05-07) 운영 진입 직후라 데이터 부족.
 
 ## 2026-05-04 - Track 3 - workers 편집 UI (팀장 전용)
 
