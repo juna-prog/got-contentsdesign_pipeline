@@ -109,7 +109,8 @@ function canEditContent(c,u){if(!u||!c)return false;if(u.is_team_lead)return tru
   return true;}
 function canTransitGate(c,nextGateId,u){if(!canEditContent(c,u))return false;
   const ng=GATES.find(g=>g.id===nextGateId);if(!ng)return false;
-  if(ng.approval==="lead2"&&!u.is_team_lead)return false;
+  // 5/8 권한 확장: part_lead 도 모든 게이트 (lead2 포함) 전환 가능
+  if(ng.approval==="lead2"&&!u.is_team_lead&&!u.is_lead)return false;
   return true;}
 function canEditTaskStatus(t,u){if(!u||!t)return false;if(u.is_team_lead||u.is_lead)return true;if(t.assignee_id===u.id)return true;if(t.task_assignees&&t.task_assignees.some(ta=>ta.worker_id===u.id))return true;return false;}
 const TM={raid:{l:"레이드",c:"#dc2626",i:"⚔️"},season_quest:{l:"시즌퀘스트",c:"#7c3aed",i:"📜"},field:{l:"필드",c:"#059669",i:"🌍"},system:{l:"시스템",c:"#2563eb",i:"⚙️"},creature:{l:"크리처",c:"#ea580c",i:"🐉"},multi:{l:"멀티",c:"#db2777",i:"👥"},growth:{l:"성장",c:"#ca8a04",i:"📈"},cosmetic:{l:"코스메틱",c:"#7c3aed",i:"✨"}};
@@ -2112,8 +2113,8 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
                     style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fbbf24",borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 5px",fontWeight:600,whiteSpace:"nowrap"}}>
                     📅
                   </button>}
-                  {user.is_team_lead&&t.start_date&&t.end_date&&t.status!=='done'&&<button onClick={()=>setScheduleReqTask({task:t,mode:'direct_apply'})}
-                    title="일정 직접 조정 (관리자 즉시 적용 + cascade + JIRA 큐)"
+                  {(user.is_team_lead||user.is_lead)&&t.start_date&&t.end_date&&t.status!=='done'&&<button onClick={()=>setScheduleReqTask({task:t,mode:'direct_apply'})}
+                    title="일정 직접 조정 (즉시 적용 + cascade + JIRA 큐)"
                     style={{background:"#ede9fe",color:"#5b21b6",border:"1px solid #c4b5fd",borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 5px",fontWeight:600,whiteSpace:"nowrap"}}>
                     ⚡
                   </button>}
@@ -2331,9 +2332,8 @@ function SignInScreen(){
 
 /* ═══ ADMIN PANEL (팀장 전용) - 4 tabs ═══ */
 function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,onOpenImport,onOpenJira,onExportCSV,onRefresh}){
-  // 파트장만 접근하면 schedule 탭만 보이고 그것이 기본. team_lead 는 members 기본.
-  const isOnlyPartLead=user&&user.is_lead&&!user.is_team_lead;
-  const[tab,setTab]=useState(isOnlyPartLead?"schedule":"members");
+  // 5/8 권한 확장: part_lead 도 모든 탭 진입 가능 (사용자/활동로그/quick action/JIRA 큐/일정 조정/확장)
+  const[tab,setTab]=useState("members");
   const[workers,setWorkers]=useState(initialWorkers||[]);
   const[parts,setParts]=useState([]);
   const[scheduleReqs,setScheduleReqs]=useState([]);
@@ -2484,12 +2484,12 @@ function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,o
         <button className="bt bt-s" onClick={closePanel}>✕ 닫기</button>
       </div>
       <div className="tab-row" style={{padding:"0 18px",margin:0,borderBottom:"1px solid var(--bd)"}}>
-        {!isOnlyPartLead&&<button className={tab==="members"?"on":""} onClick={()=>setTab("members")}>👥 사용자 ({workers.length})</button>}
-        {!isOnlyPartLead&&<button className={tab==="audit"?"on":""} onClick={()=>setTab("audit")}>📜 활동 로그</button>}
-        {!isOnlyPartLead&&<button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>}
-        {!isOnlyPartLead&&<button className={tab==="jira"?"on":""} onClick={()=>setTab("jira")}>🎫 JIRA 큐</button>}
+        <button className={tab==="members"?"on":""} onClick={()=>setTab("members")}>👥 사용자 ({workers.length})</button>
+        <button className={tab==="audit"?"on":""} onClick={()=>setTab("audit")}>📜 활동 로그</button>
+        <button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>
+        <button className={tab==="jira"?"on":""} onClick={()=>setTab("jira")}>🎫 JIRA 큐</button>
         <button className={tab==="schedule"?"on":""} onClick={()=>setTab("schedule")}>📅 일정 조정 요청</button>
-        {!isOnlyPartLead&&<button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>}
+        <button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>
       </div>
       <div style={{flex:1,overflow:"auto",padding:14}}>
 
@@ -3702,7 +3702,10 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const assigneeWorker=useMemo(()=>(workers||[]).find(w=>w.id===task.assignee_id),[workers,task]);
   const lvl1=useMemo(()=>{
     if(isDirectApply)return null;
-    const partId=assigneeWorker?.part_id||user.part_id;
+    // 파트별 1차 승인자 override (part_lead 가 단일 part_id 라 한 명이 여러 파트 lead 인 경우)
+    const PART_LEAD_OVERRIDES={cutscene:"quest"}; // 5/8: cutscene 의 1차 승인자는 quest part_lead (권재만)
+    const rawPartId=assigneeWorker?.part_id||user.part_id;
+    const partId=PART_LEAD_OVERRIDES[rawPartId]||rawPartId;
     return(workers||[]).find(w=>w.is_part_lead&&w.part_id===partId&&w.is_active!==false&&w.id!==task.assignee_id)
       ||(workers||[]).find(w=>w.is_part_lead&&w.part_id===partId&&w.is_active!==false);
   },[workers,assigneeWorker,user,task,isDirectApply]);
@@ -4651,7 +4654,7 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
-        {user&&(user.is_team_lead||user.is_lead)&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title={user.is_team_lead?"관리자 페이지":"일정 조정 요청"} style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>{user.is_team_lead?"⚙️ 관리자":"📅 승인 패널"}</button>}
+        {user&&(user.is_team_lead||user.is_lead)&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title="관리자 페이지" style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>⚙️ 관리자</button>}
         {user&&<span className="user-badge" onClick={signOut} title="로그아웃">
           {(user.is_team_lead||user.is_lead)?"★":""}{user.name}<span className="role">{roleLabel}</span>
         </span>}
