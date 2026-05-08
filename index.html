@@ -1704,6 +1704,7 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
   const[dragId,setDragId]=useState(null);
   const[rightW,setRightW]=useState(420);
   const[reasonReq,setReasonReq]=useState(null); // {title, oldVal, newVal, onConfirm}
+  const[scheduleReqTask,setScheduleReqTask]=useState(null); // v21 일정 조정 모달: {task, mode}
   const[jiraModal,setJiraModal]=useState(false);
   const[pendingJira,setPendingJira]=useState([]);
   useEffect(()=>{db.jiraPending().then(r=>setPendingJira(r||[])).catch(()=>setPendingJira([]))},[ct]);
@@ -2106,6 +2107,16 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
                     style={{background:predCount>0?(blockCount>0?"var(--rd-bg)":"#e0e7ff"):"var(--bg2)",color:predCount>0?(blockCount>0?"var(--rd)":"#4338ca"):"var(--t4)",border:"1px solid "+(predCount>0?(blockCount>0?"var(--rd)":"#c7d2fe"):"var(--bd)"),borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 5px",fontWeight:600,whiteSpace:"nowrap"}}>
                     🔗{predCount>0?predCount:""}{blockCount>0?"⚠":""}
                   </button>
+                  {!user.is_team_lead&&t.assignee_id===user.id&&t.start_date&&t.end_date&&t.status!=='done'&&<button onClick={()=>setScheduleReqTask({task:t,mode:'request'})}
+                    title="일정 조정 요청 (1차 파트장 / 1주일 이상은 2차 팀장 승인)"
+                    style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fbbf24",borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 5px",fontWeight:600,whiteSpace:"nowrap"}}>
+                    📅
+                  </button>}
+                  {user.is_team_lead&&t.start_date&&t.end_date&&t.status!=='done'&&<button onClick={()=>setScheduleReqTask({task:t,mode:'direct_apply'})}
+                    title="일정 직접 조정 (관리자 즉시 적용 + cascade + JIRA 큐)"
+                    style={{background:"#ede9fe",color:"#5b21b6",border:"1px solid #c4b5fd",borderRadius:3,fontSize:10,cursor:"pointer",padding:"2px 5px",fontWeight:600,whiteSpace:"nowrap"}}>
+                    ⚡
+                  </button>}
                   <select disabled={!ok} value={t.action_verb||''} onChange={e=>chgTaskVerb(t.id,e.target.value)}
                     title={ok?"일감 성격 (action_verb)":"본인 태스크만 변경 가능"}
                     style={{fontSize:10,padding:"2px 3px",border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",fontFamily:"inherit",opacity:ok?1:.5,maxWidth:78}}>
@@ -2145,6 +2156,19 @@ function PipelineView({ct,vr,wk,user,jumpId,onRefresh,deps,allT,onDepRefresh}){
     </div>
     {reasonReq&&<ReasonModal title={reasonReq.title} oldVal={reasonReq.oldVal} newVal={reasonReq.newVal}
       onSave={reasonReq.onConfirm} onClose={()=>setReasonReq(null)}/>}
+    {scheduleReqTask&&<ScheduleRequestModal task={scheduleReqTask.task} mode={scheduleReqTask.mode} user={user} workers={wk} allTasks={allT}
+      onClose={()=>setScheduleReqTask(null)}
+      onDone={(res)=>{
+        onRefresh&&onRefresh(true);
+        if(scheduleReqTask.mode==='direct_apply'){
+          const msg="✓ "+(res?.applied||1)+"건 적용"+(res?.jiraQueued?" / JIRA 큐 "+res.jiraQueued+"건 적재":"");
+          window.showToast&&window.showToast(msg);
+          // sel task 가 trigger 인 경우 task 목록 즉시 갱신
+          if(sel?.id)db.tasks(sel.id).then(setTasks).catch(()=>null);
+        }else{
+          window.showToast&&window.showToast("일정 조정 요청 제출됨");
+        }
+      }}/>}
     {jiraModal&&sel&&<JiraPreviewModal content={sel} tasks={tasks} versions={vr} workers={wk} user={user}
       onClose={()=>setJiraModal(false)} onRefresh={()=>{db.tasks(sel.id).then(setTasks);onRefresh(true)}}/>}
     {depEditTask&&<DependencyEditor task={depEditTask} deps={deps} allTasks={allT} onClose={()=>setDepEditTask(null)} onRefresh={()=>{onDepRefresh&&onDepRefresh()}}/>}
@@ -2289,10 +2313,15 @@ function SignInScreen(){
 }
 
 /* ═══ ADMIN PANEL (팀장 전용) - 4 tabs ═══ */
-function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImport,onOpenJira,onExportCSV}){
-  const[tab,setTab]=useState("members");
+function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,onOpenImport,onOpenJira,onExportCSV,onRefresh}){
+  // 파트장만 접근하면 schedule 탭만 보이고 그것이 기본. team_lead 는 members 기본.
+  const isOnlyPartLead=user&&user.is_lead&&!user.is_team_lead;
+  const[tab,setTab]=useState(isOnlyPartLead?"schedule":"members");
   const[workers,setWorkers]=useState(initialWorkers||[]);
   const[parts,setParts]=useState([]);
+  const[scheduleReqs,setScheduleReqs]=useState([]);
+  const[scheduleReqsLoading,setScheduleReqsLoading]=useState(false);
+  const[scheduleStatusFilter,setScheduleStatusFilter]=useState("active"); // active = pending+lvl1_approved / all / approved / rejected
   const[loading,setLoading]=useState(true);
   const[editing,setEditing]=useState(null); // null | worker | "new"
   const[form,setForm]=useState({});
@@ -2325,6 +2354,12 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
     db.auditLog().then(rows=>{setAudit(rows||[]);setAuditLoading(false)});
   }},[tab]);
   useEffect(()=>{if(tab==="jira"){reloadJiraQueue()}},[tab,reloadJiraQueue]);
+
+  const reloadScheduleReqs=useCallback(()=>{
+    setScheduleReqsLoading(true);
+    db.scheduleRequests().then(rows=>{setScheduleReqs(rows||[]);setScheduleReqsLoading(false)});
+  },[]);
+  useEffect(()=>{if(tab==="schedule"){reloadScheduleReqs()}},[tab,reloadScheduleReqs]);
 
   const partOptions=useMemo(()=>{
     const fromDb=(parts||[]).map(p=>({id:p.id,label:p.label||PART_LABELS[p.id]||p.id}));
@@ -2432,11 +2467,12 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
         <button className="bt bt-s" onClick={closePanel}>✕ 닫기</button>
       </div>
       <div className="tab-row" style={{padding:"0 18px",margin:0,borderBottom:"1px solid var(--bd)"}}>
-        <button className={tab==="members"?"on":""} onClick={()=>setTab("members")}>👥 사용자 ({workers.length})</button>
-        <button className={tab==="audit"?"on":""} onClick={()=>setTab("audit")}>📜 활동 로그</button>
-        <button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>
-        <button className={tab==="jira"?"on":""} onClick={()=>setTab("jira")}>🎫 JIRA 큐</button>
-        <button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>
+        {!isOnlyPartLead&&<button className={tab==="members"?"on":""} onClick={()=>setTab("members")}>👥 사용자 ({workers.length})</button>}
+        {!isOnlyPartLead&&<button className={tab==="audit"?"on":""} onClick={()=>setTab("audit")}>📜 활동 로그</button>}
+        {!isOnlyPartLead&&<button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>}
+        {!isOnlyPartLead&&<button className={tab==="jira"?"on":""} onClick={()=>setTab("jira")}>🎫 JIRA 큐</button>}
+        <button className={tab==="schedule"?"on":""} onClick={()=>setTab("schedule")}>📅 일정 조정 요청</button>
+        {!isOnlyPartLead&&<button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>}
       </div>
       <div style={{flex:1,overflow:"auto",padding:14}}>
 
@@ -2728,6 +2764,148 @@ function AdminPanel({user,workers:initialWorkers,tasks,onClose,onDone,onOpenImpo
                   })}
                 </tbody>
               </table>
+            </div>
+          </>;
+        })()}
+      </div>}
+
+      {/* ━━ Tab 6: 일정 조정 요청 (v21) ━━ */}
+      {tab==="schedule"&&<div style={{padding:8,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+        {(()=>{
+          const rows=scheduleReqs||[];
+          const myApproval=rows.filter(r=>(r.lvl1_approver_id===user.id&&r.status==="pending")||(r.lvl2_approver_id===user.id&&r.status==="lvl1_approved"));
+          const myRequests=rows.filter(r=>r.requester_id===user.id);
+          const others=rows.filter(r=>r.requester_id!==user.id&&!(r.lvl1_approver_id===user.id&&r.status==="pending")&&!(r.lvl2_approver_id===user.id&&r.status==="lvl1_approved"));
+          const filtered=(()=>{
+            if(scheduleStatusFilter==="active")return rows.filter(r=>r.status==="pending"||r.status==="lvl1_approved");
+            if(scheduleStatusFilter==="my_approval")return myApproval;
+            if(scheduleStatusFilter==="my_requests")return myRequests;
+            if(scheduleStatusFilter==="approved")return rows.filter(r=>r.status==="approved"||r.status==="applied");
+            if(scheduleStatusFilter==="rejected")return rows.filter(r=>r.status==="rejected"||r.status==="cancelled");
+            return rows;
+          })();
+          const ST_COLOR={"pending":"#d97706","lvl1_approved":"#0891b2","approved":"#059669","applied":"#059669","rejected":"#dc2626","cancelled":"#6b7280"};
+          const ST_LABEL={"pending":"1차 대기","lvl1_approved":"2차 대기","approved":"승인","applied":"적용","rejected":"거절","cancelled":"취소"};
+          const fmt=(ts)=>ts?new Date(ts).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"-";
+          return<>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:12}}>
+              <div style={{padding:12,background:myApproval.length>0?"#fef3c7":"var(--bg)",border:"1px solid "+(myApproval.length>0?"#fbbf24":"var(--bd)"),borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>본인 승인 대기</div>
+                <div style={{fontSize:24,fontWeight:700,color:myApproval.length>0?"#92400e":"var(--t3)"}}>{myApproval.length}</div>
+              </div>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>본인 요청</div>
+                <div style={{fontSize:24,fontWeight:700,color:"var(--t2)"}}>{myRequests.length}</div>
+              </div>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>활성 (대기 중)</div>
+                <div style={{fontSize:24,fontWeight:700,color:"var(--ac)"}}>{rows.filter(r=>r.status==="pending"||r.status==="lvl1_approved").length}</div>
+              </div>
+              <div style={{padding:12,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>전체</div>
+                <div style={{fontSize:24,fontWeight:700,color:"var(--t2)"}}>{rows.length}</div>
+              </div>
+            </div>
+            <div style={{padding:"10px 12px",background:"var(--bg3)",borderRadius:8,fontSize:11,color:"var(--t3)",marginBottom:10,lineHeight:1.7}}>
+              <div style={{fontWeight:600,color:"var(--t2)",marginBottom:4}}>📅 일정 조정 워크플로 (v21)</div>
+              작업자가 본인 task 의 일정 조정을 요청하면 1차(파트장) → 2차(팀장, 1주일 이상 시) 승인을 거쳐 적용됩니다.
+              승인자는 영향 범위(동일 워커 + 기존 기간 겹침 task) 를 검토하고 추가 조정값을 입력할 수 있습니다.
+              <div style={{marginTop:4,fontSize:10,color:"var(--rd)"}}>
+                ⚠ 현재 단계: 승인까지만 기록. <code>applied_at</code> 자동 트리거 (트래커 PATCH + schedule_changes 기록 + JIRA 큐 적재) 는 향후 구현 예정.
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                {[["active","대기 중",rows.filter(r=>r.status==="pending"||r.status==="lvl1_approved").length],
+                  ["my_approval","본인 승인",myApproval.length],
+                  ["my_requests","본인 요청",myRequests.length],
+                  ["approved","승인됨",rows.filter(r=>r.status==="approved"||r.status==="applied").length],
+                  ["rejected","거절/취소",rows.filter(r=>r.status==="rejected"||r.status==="cancelled").length],
+                  ["all","전체",rows.length]
+                ].map(([k,l,n])=>
+                  <button key={k} className={"bt bt-s"+(scheduleStatusFilter===k?" on":"")} onClick={()=>setScheduleStatusFilter(k)} style={{fontSize:11}}>{l} ({n})</button>
+                )}
+              </div>
+              <button className="bt bt-s" onClick={reloadScheduleReqs} disabled={scheduleReqsLoading} style={{marginLeft:"auto",fontSize:11}}>{scheduleReqsLoading?"로딩...":"🔄 새로고침"}</button>
+            </div>
+            <div style={{flex:1,overflow:"auto",border:"1px solid var(--bd)",borderRadius:6}}>
+              {filtered.length===0?<div style={{padding:30,textAlign:"center",color:"var(--t4)",fontSize:12}}>{scheduleReqsLoading?"로딩 중...":"표시할 요청이 없습니다."}</div>:
+                <div>
+                  {filtered.map(r=>{
+                    const taskTitle=r.tasks?(r.tasks.title_object||r.tasks.title||("태스크 #"+r.task_id)):("태스크 #"+r.task_id);
+                    const requesterName=r.requester?.name||("워커 #"+r.requester_id);
+                    const isMyApproval=(r.lvl1_approver_id===user.id&&r.status==="pending")||(r.lvl2_approver_id===user.id&&r.status==="lvl1_approved");
+                    const isPending=r.status==="pending"||r.status==="lvl1_approved";
+                    const lvl1Name=r.lvl1_approver?.name||(r.lvl1_approver_id?("워커 #"+r.lvl1_approver_id):"-");
+                    const lvl2Name=r.lvl2_approver?.name||(r.lvl2_approver_id?("워커 #"+r.lvl2_approver_id):"-");
+                    return<div key={r.id} style={{padding:12,borderBottom:"1px solid var(--bg3)",background:isMyApproval?"#fffbeb":"var(--bg)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                        <span style={{fontSize:10,padding:"2px 6px",background:ST_COLOR[r.status]||"var(--t3)",color:"#fff",borderRadius:3,fontWeight:600}}>{ST_LABEL[r.status]||r.status}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:"var(--t1)"}}>{taskTitle}</span>
+                        <span style={{fontSize:11,color:"var(--t4)"}}>요청자: <span style={{fontWeight:600,color:"var(--t3)"}}>{requesterName}</span></span>
+                        <span style={{fontSize:11,color:"var(--t4)",marginLeft:"auto"}}>{fmt(r.created_at)}</span>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:6,fontSize:11}}>
+                        <div style={{padding:"4px 8px",background:"var(--bg3)",borderRadius:4}}>
+                          <span style={{color:"var(--t4)"}}>현재: </span>{r.current_start||"-"} ~ {r.current_end||"-"}
+                        </div>
+                        <div style={{padding:"4px 8px",background:"#fef3c7",borderRadius:4}}>
+                          <span style={{color:"var(--t4)"}}>희망: </span><span style={{fontWeight:600,color:"#92400e"}}>{r.desired_start} ~ {r.desired_end}</span>
+                          <span style={{marginLeft:6,color:r.delay_days>=7?"var(--rd)":"#92400e",fontWeight:700}}>({r.delay_days>0?"+":""}{r.delay_days}영업일)</span>
+                          {r.lvl2_required&&<span style={{marginLeft:4,fontSize:9,padding:"1px 4px",background:"var(--rd)",color:"#fff",borderRadius:2}}>2차 필수</span>}
+                        </div>
+                      </div>
+                      {r.reason&&<div style={{fontSize:11,color:"var(--t3)",marginBottom:6,fontStyle:"italic"}}>"{r.reason}"</div>}
+                      <div style={{display:"flex",gap:10,fontSize:10,color:"var(--t4)",marginBottom:6}}>
+                        <span>1차 (파트장): <span style={{fontWeight:600,color:r.lvl1_at?"var(--gn)":"var(--t3)"}}>{lvl1Name}{r.lvl1_at?" ✓ "+fmt(r.lvl1_at):" (대기)"}</span></span>
+                        {r.lvl2_required&&<span>2차 (팀장): <span style={{fontWeight:600,color:r.lvl2_at?"var(--gn)":"var(--t3)"}}>{lvl2Name}{r.lvl2_at?" ✓ "+fmt(r.lvl2_at):" (대기)"}</span></span>}
+                      </div>
+                      {r.affected_tasks&&Array.isArray(r.affected_tasks)&&r.affected_tasks.length>0&&<details style={{marginBottom:6}}>
+                        <summary style={{fontSize:11,color:"var(--t3)",cursor:"pointer"}}>📊 영향 받는 task ({r.affected_tasks.length}건)</summary>
+                        <div style={{marginTop:4,padding:"6px 8px",background:"var(--bg2)",borderRadius:4,maxHeight:120,overflow:"auto"}}>
+                          {r.affected_tasks.map((a,i)=><div key={i} style={{fontSize:10,color:"var(--t3)",padding:"2px 0",borderBottom:i<r.affected_tasks.length-1?"1px dashed var(--bg3)":"none"}}>
+                            #{a.task_id} {a.title} : <span style={{color:"var(--t4)"}}>{a.current_start}~{a.current_end}</span> → <span style={{color:"var(--ac)",fontWeight:600}}>{a.proposed_start}~{a.proposed_end}</span>
+                          </div>)}
+                        </div>
+                      </details>}
+                      {r.lvl1_comment&&<div style={{fontSize:10,color:"var(--t3)",padding:"4px 6px",background:"var(--bg2)",borderRadius:3,marginBottom:4}}>1차 코멘트: {r.lvl1_comment}</div>}
+                      {r.lvl2_comment&&<div style={{fontSize:10,color:"var(--t3)",padding:"4px 6px",background:"var(--bg2)",borderRadius:3,marginBottom:4}}>2차 코멘트: {r.lvl2_comment}</div>}
+                      {r.rejected_reason&&<div style={{fontSize:10,color:"var(--rd)",padding:"4px 6px",background:"var(--rd-bg)",borderRadius:3,marginBottom:4}}>거절 사유: {r.rejected_reason}</div>}
+                      {/* 액션 버튼 */}
+                      {isPending&&isMyApproval&&<div style={{display:"flex",gap:6,marginTop:6}}>
+                        <button className="bt bt-s bt-g" onClick={async()=>{
+                          const cmt=prompt("승인 코멘트 (선택):","")||"";
+                          const isLvl1=r.status==="pending"&&r.lvl1_approver_id===user.id;
+                          const isLvl2=r.status==="lvl1_approved"&&r.lvl2_approver_id===user.id;
+                          const now=new Date().toISOString();
+                          const patch={};
+                          if(isLvl1){
+                            patch.lvl1_at=now;patch.lvl1_comment=cmt||null;
+                            patch.status=r.lvl2_required?"lvl1_approved":"approved";
+                          }
+                          if(isLvl2){
+                            patch.lvl2_at=now;patch.lvl2_comment=cmt||null;
+                            patch.status="approved";
+                          }
+                          try{await db.updScheduleRequest(r.id,patch);reloadScheduleReqs();onDone&&onDone();window.showToast&&window.showToast("승인 처리됨")}
+                          catch(e){alert("승인 실패: "+(e.message||e))}
+                        }} style={{fontSize:11,padding:"4px 10px"}}>✓ 승인</button>
+                        <button className="bt bt-s" onClick={async()=>{
+                          const reason=prompt("거절 사유 (필수):","");
+                          if(!reason||!reason.trim())return;
+                          try{await db.updScheduleRequest(r.id,{status:"rejected",rejected_reason:reason.trim()});reloadScheduleReqs();onDone&&onDone();window.showToast&&window.showToast("거절 처리됨")}
+                          catch(e){alert("거절 실패: "+(e.message||e))}
+                        }} style={{fontSize:11,padding:"4px 10px",background:"var(--rd-bg)",color:"var(--rd)",borderColor:"var(--rd)"}}>✕ 거절</button>
+                      </div>}
+                      {r.status==="pending"&&r.requester_id===user.id&&<button className="bt bt-s" onClick={async()=>{
+                        if(!confirm("이 요청을 취소할까요?"))return;
+                        try{await db.updScheduleRequest(r.id,{status:"cancelled"});reloadScheduleReqs();window.showToast&&window.showToast("요청 취소됨")}
+                        catch(e){alert("취소 실패: "+(e.message||e))}
+                      }} style={{fontSize:11,padding:"3px 8px",marginTop:4}}>요청 취소</button>}
+                    </div>
+                  })}
+                </div>
+              }
             </div>
           </>;
         })()}
@@ -3488,13 +3666,238 @@ function ReasonModal({title,oldVal,newVal,onSave,onClose}){
   </div>
 }
 
+/* ═══ SCHEDULE CHANGE REQUEST / DIRECT EDIT MODAL (v21 일정 조정) ═══ */
+/* mode: 'request' = 작업자 본인 task 요청 워크플로 / 'direct_apply' = 관리자 즉시 적용 + cascade + JIRA 큐 */
+function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose,onDone}){
+  const isDirectApply=mode==='direct_apply';
+  const curStart=task.start_date?task.start_date.slice(0,10):"";
+  const curEnd=task.end_date?task.end_date.slice(0,10):"";
+  const[ds,setDs]=useState(curStart);
+  const[de,setDe]=useState(curEnd);
+  const[reason,setReason]=useState("");
+  const[cascadeChecked,setCascadeChecked]=useState(true); // direct_apply 모드: cascade 적용 여부 (기본 ON)
+  const[jiraSyncChecked,setJiraSyncChecked]=useState(true); // direct_apply 모드: JIRA 큐 적재 여부 (기본 ON)
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState(null);
+  // 승인자 자동 배정 (request 모드만): 1차 = 태스크 담당자 같은 파트의 part_lead / 2차 = team_lead (1주일 이상 시)
+  const assigneeWorker=useMemo(()=>(workers||[]).find(w=>w.id===task.assignee_id),[workers,task]);
+  const lvl1=useMemo(()=>{
+    if(isDirectApply)return null;
+    const partId=assigneeWorker?.part_id||user.part_id;
+    return(workers||[]).find(w=>w.is_part_lead&&w.part_id===partId&&w.is_active!==false&&w.id!==task.assignee_id)
+      ||(workers||[]).find(w=>w.is_part_lead&&w.part_id===partId&&w.is_active!==false);
+  },[workers,assigneeWorker,user,task,isDirectApply]);
+  const lvl2=useMemo(()=>(workers||[]).find(w=>w.is_team_lead&&w.is_active!==false),[workers]);
+  // 분석
+  const dStart=businessDaysDiff(curStart,ds);
+  const dEnd=businessDaysDiff(curEnd,de);
+  const delay=Math.max(dStart,dEnd);
+  const lvl2Required=delay>=7;
+  const affected=useMemo(()=>computeAffectedTasks(task,curStart,curEnd,ds,de,allTasks||[]),[task,curStart,curEnd,ds,de,allTasks]);
+  const extractJiraKey=(url)=>{const m=String(url||'').match(/([A-Z]+-\d+)/);return m?m[1]:null};
+  const submit=async()=>{
+    if(!ds||!de){setErr((isDirectApply?"새 ":"희망 ")+"시작/종료일 입력 필수");return}
+    if(de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
+    if(!reason.trim()){setErr((isDirectApply?"조정":"요청")+" 사유 입력 필수");return}
+    if(ds===curStart&&de===curEnd){setErr("일정이 현재와 동일함");return}
+    if(!isDirectApply&&!lvl1){setErr("1차 승인자(파트장) 미배정 - 관리자에게 문의");return}
+    setSaving(true);setErr(null);
+    if(isDirectApply){
+      // ── 관리자 즉시 적용 모드 ──
+      try{
+        const reasonText=reason.trim();
+        const reasonCascade="관리자 직접 조정 cascade: "+reasonText;
+        // 1) trigger task PATCH + schedule_changes
+        const triggerPatch={updated_at:new Date().toISOString()};
+        if(ds!==curStart)triggerPatch.start_date=ds;
+        if(de!==curEnd)triggerPatch.end_date=de;
+        await db.updTask(task.id,triggerPatch);
+        if(ds!==curStart){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"start_date",old_value:curStart||"-",new_value:ds,reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
+        }
+        if(de!==curEnd){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"end_date",old_value:curEnd||"-",new_value:de,reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
+        }
+        // 2) cascade affected tasks
+        let cascadeApplied=0;
+        if(cascadeChecked&&affected.length>0){
+          for(const a of affected){
+            const aTask=(allTasks||[]).find(t=>t.id===a.task_id);
+            if(!aTask)continue;
+            const aOldStart=aTask.start_date?aTask.start_date.slice(0,10):null;
+            const aOldEnd=aTask.end_date?aTask.end_date.slice(0,10):null;
+            await db.updTask(a.task_id,{start_date:a.proposed_start,end_date:a.proposed_end,updated_at:new Date().toISOString()});
+            if(aOldStart!==a.proposed_start){
+              await db.addChange({content_id:aTask.content_id||null,task_id:a.task_id,field:"start_date",old_value:aOldStart||"-",new_value:a.proposed_start,reason:reasonCascade,changed_by:user.name,actor_worker_id:user.id});
+            }
+            if(aOldEnd!==a.proposed_end){
+              await db.addChange({content_id:aTask.content_id||null,task_id:a.task_id,field:"end_date",old_value:aOldEnd||"-",new_value:a.proposed_end,reason:reasonCascade,changed_by:user.name,actor_worker_id:user.id});
+            }
+            cascadeApplied++;
+          }
+        }
+        // 3) JIRA 큐 적재 (update_dates)
+        let jiraQueued=0;
+        if(jiraSyncChecked){
+          const triggerKey=extractJiraKey(task.jira_url);
+          if(triggerKey){
+            await db.addJiraLog({operation_type:"update_dates",task_id:task.id,content_id:null,payload:{issue_key:triggerKey,start_date:ds,end_date:de},status:"pending"});
+            jiraQueued++;
+          }
+          if(cascadeChecked){
+            for(const a of affected){
+              const aTask=(allTasks||[]).find(t=>t.id===a.task_id);
+              if(!aTask)continue;
+              const k=extractJiraKey(aTask.jira_url);
+              if(!k)continue;
+              await db.addJiraLog({operation_type:"update_dates",task_id:a.task_id,content_id:null,payload:{issue_key:k,start_date:a.proposed_start,end_date:a.proposed_end},status:"pending"});
+              jiraQueued++;
+            }
+          }
+        }
+        onDone&&onDone({applied:1+cascadeApplied,jiraQueued});
+        onClose();
+      }catch(e){setErr("적용 실패: "+(e.message||e));setSaving(false)}
+      return;
+    }
+    // ── 작업자 요청 워크플로 모드 ──
+    try{
+      await db.addScheduleRequest({
+        task_id:task.id,
+        requester_id:user.id,
+        current_start:curStart||null,
+        current_end:curEnd||null,
+        desired_start:ds,
+        desired_end:de,
+        delay_days:delay,
+        reason:reason.trim(),
+        affected_tasks:affected,
+        status:"pending",
+        lvl1_approver_id:lvl1.id,
+        lvl2_required:lvl2Required,
+        lvl2_approver_id:lvl2Required?(lvl2?.id||null):null
+      });
+      onDone&&onDone();
+      onClose();
+    }catch(e){setErr("요청 저장 실패: "+(e.message||e));setSaving(false)}
+  };
+  const headerIcon=isDirectApply?"⚡":"📅";
+  const headerTitle=isDirectApply?"일정 직접 조정 (관리자)":"일정 조정 요청";
+  const startLabel=isDirectApply?"새 시작":"희망 시작";
+  const endLabel=isDirectApply?"새 종료":"희망 종료";
+  const reasonLabel=isDirectApply?"조정 사유":"요청 사유";
+  const reasonPlaceholder=isDirectApply?"예: 5/14 라이브 D-1 일정 압축, 우선순위 상향":"예: 시나리오 검수 지연으로 일정 조정 필요";
+  const submitLabel=isDirectApply?"즉시 적용":"요청 제출";
+  return<div className="modal-bg" onClick={onClose}>
+    <div className="modal" style={{maxWidth:600,width:"94vw"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{background:isDirectApply?"#7c3aed":undefined,color:isDirectApply?"#fff":undefined}}>{headerIcon} {headerTitle} - {task.title_object||task.title||("태스크 #"+task.id)}</div>
+      <div className="modal-b" style={{maxHeight:"70vh",overflow:"auto"}}>
+        {isDirectApply&&<div style={{padding:"8px 12px",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:6,fontSize:11,color:"#5b21b6",marginBottom:12,lineHeight:1.6}}>
+          ⚡ <b>관리자 모드</b>: 승인 워크플로 우회 후 즉시 트래커에 반영됩니다. cascade 영향 task 도 함께 조정 가능 (체크박스). JIRA 큐는 자동 적재됩니다.
+        </div>}
+        <div style={{fontSize:11,color:"var(--t3)",marginBottom:6}}>현재 일정</div>
+        <div style={{padding:"6px 10px",background:"var(--bg3)",borderRadius:4,fontSize:12,marginBottom:14}}>
+          {curStart||"(없음)"} ~ {curEnd||"(없음)"}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+          <div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>{startLabel} <span style={{color:"var(--rd)"}}>*</span></div>
+            <input type="date" value={ds} onChange={e=>setDs(e.target.value)} style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:13}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>{endLabel} <span style={{color:"var(--rd)"}}>*</span></div>
+            <input type="date" value={de} onChange={e=>setDe(e.target.value)} style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:13}}/>
+          </div>
+        </div>
+        <div style={{padding:"8px 12px",background:delay>=7?"var(--rd-bg)":delay>0?"#fef3c7":"var(--bg2)",borderRadius:6,fontSize:12,marginBottom:12,border:"1px solid "+(delay>=7?"var(--rd)":delay>0?"#fbbf24":"var(--bd)")}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,fontWeight:600,color:delay>=7?"var(--rd)":delay>0?"#92400e":"var(--t2)"}}>
+            영업일 변경: {delay>0?"+":""}{delay}일 {!isDirectApply&&delay>=7&&<span style={{fontSize:10,padding:"2px 6px",background:"var(--rd)",color:"#fff",borderRadius:3}}>2차 승인 필수</span>}
+          </div>
+          <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>
+            한국 공휴일 + 주말 제외 / start delta {dStart>0?"+":""}{dStart}일, end delta {dEnd>0?"+":""}{dEnd}일
+          </div>
+        </div>
+        {!isDirectApply&&<div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)"}}>
+          <div style={{fontWeight:600,marginBottom:4,color:"var(--t2)"}}>승인 라인</div>
+          <div>1차 (파트장): <span style={{fontWeight:600,color:lvl1?"var(--ac)":"var(--rd)"}}>{lvl1?lvl1.name:"미배정 ⚠"}</span></div>
+          {lvl2Required&&<div>2차 (팀장): <span style={{fontWeight:600,color:lvl2?"var(--ac)":"var(--rd)"}}>{lvl2?lvl2.name:"미배정 ⚠"}</span></div>}
+        </div>}
+        {isDirectApply&&<div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)"}}>
+          <div style={{fontWeight:600,marginBottom:6,color:"var(--t2)"}}>적용 옵션</div>
+          <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer"}}>
+            <input type="checkbox" checked={cascadeChecked} onChange={e=>setCascadeChecked(e.target.checked)} disabled={affected.length===0}/>
+            <span>영향 받는 task {affected.length}건 cascade 자동 조정 {affected.length===0&&<span style={{color:"var(--t4)"}}>(해당 없음)</span>}</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+            <input type="checkbox" checked={jiraSyncChecked} onChange={e=>setJiraSyncChecked(e.target.checked)}/>
+            <span>JIRA 일정 동기 큐 적재 (update_dates, jira_url 있는 task 만)</span>
+          </label>
+        </div>}
+        {affected.length>0&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:"var(--t2)"}}>
+            📊 영향 받는 task ({affected.length}건)
+            <span style={{fontSize:10,fontWeight:400,color:"var(--t4)",marginLeft:6}}>
+              {affected.filter(a=>a.cascade_reason==='sub_task').length>0&&"Sub-Task "+affected.filter(a=>a.cascade_reason==='sub_task').length+"건"}
+              {affected.filter(a=>a.cascade_reason==='sub_task').length>0&&affected.filter(a=>a.cascade_reason==='worker_overlap').length>0&&" / "}
+              {affected.filter(a=>a.cascade_reason==='worker_overlap').length>0&&"동일 워커+겹침 "+affected.filter(a=>a.cascade_reason==='worker_overlap').length+"건"}
+            </span>
+          </div>
+          <div style={{maxHeight:180,overflow:"auto",border:"1px solid var(--bd)",borderRadius:4}}>
+            <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+              <thead style={{position:"sticky",top:0,background:"var(--bg2)"}}>
+                <tr style={{borderBottom:"1px solid var(--bd)"}}>
+                  <th style={{textAlign:"left",padding:"4px 6px"}}>유형</th>
+                  <th style={{textAlign:"left",padding:"4px 6px"}}>#</th>
+                  <th style={{textAlign:"left",padding:"4px 6px"}}>제목</th>
+                  <th style={{textAlign:"left",padding:"4px 6px"}}>현재</th>
+                  <th style={{textAlign:"left",padding:"4px 6px"}}>제안</th>
+                </tr>
+              </thead>
+              <tbody>
+                {affected.map(a=><tr key={a.task_id} style={{borderBottom:"1px solid var(--bg3)"}}>
+                  <td style={{padding:"4px 6px"}}>
+                    {a.cascade_reason==='sub_task'?<span style={{padding:"1px 5px",background:"#fef3c7",color:"#92400e",borderRadius:2,fontSize:9,fontWeight:600}}>Sub</span>
+                      :<span style={{padding:"1px 5px",background:"#e0e7ff",color:"#4338ca",borderRadius:2,fontSize:9,fontWeight:600}}>워커</span>}
+                  </td>
+                  <td style={{padding:"4px 6px",color:"var(--t4)"}}>{a.task_id}</td>
+                  <td style={{padding:"4px 6px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.title}>{a.title}</td>
+                  <td style={{padding:"4px 6px",color:"var(--t4)"}}>{a.current_start}~{a.current_end}</td>
+                  <td style={{padding:"4px 6px",color:"var(--ac)",fontWeight:600}}>{a.proposed_start}~{a.proposed_end}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+        </div>}
+        <div style={{fontSize:12,color:"var(--t3)",marginBottom:6}}>{reasonLabel} <span style={{color:"var(--rd)"}}>*</span></div>
+        <textarea autoFocus value={reason} onChange={e=>setReason(e.target.value)} placeholder={reasonPlaceholder}
+          style={{width:"100%",minHeight:80,fontSize:13,padding:"8px 10px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"inherit",resize:"vertical"}}/>
+        {err&&<div style={{marginTop:8,padding:"6px 10px",background:"var(--rd-bg)",color:"var(--rd)",borderRadius:4,fontSize:12}}>{err}</div>}
+      </div>
+      <div className="modal-f">
+        <button className="bt" onClick={onClose} disabled={saving}>취소</button>
+        <button className={"bt "+(isDirectApply?"":"bt-g")} onClick={submit} disabled={saving||!reason.trim()||(!isDirectApply&&!lvl1)}
+          style={isDirectApply?{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}:undefined}>
+          {saving?(isDirectApply?"적용 중...":"저장 중..."):submitLabel}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
 /* ═══ NOTICE BAR ═══ */
-function NoticeBar({changes,user,onJump}){
+function NoticeBar({changes,user,onJump,onOpenAdmin}){
   const[expanded,setExp]=useState(false);
   const[dismissed,setDis]=useState(()=>{try{return JSON.parse(localStorage.getItem("pipeline_dismissed_changes")||"[]")}catch(e){return[]}});
+  const[scheduleReqs,setScheduleReqs]=useState([]);
+  useEffect(()=>{
+    if(!user)return;
+    db.scheduleRequests().then(r=>setScheduleReqs(r||[])).catch(()=>setScheduleReqs([]));
+  },[user]);
+  const myApprovalPending=useMemo(()=>(scheduleReqs||[]).filter(r=>(r.lvl1_approver_id===user?.id&&r.status==="pending")||(r.lvl2_approver_id===user?.id&&r.status==="lvl1_approved")),[scheduleReqs,user]);
+  const myRequestUpdates=useMemo(()=>(scheduleReqs||[]).filter(r=>r.requester_id===user?.id&&(r.status==="approved"||r.status==="rejected"||r.status==="lvl1_approved")),[scheduleReqs,user]);
   const recent=useMemo(()=>{const cutoff=Date.now()-7*24*60*60*1000;
     return(changes||[]).filter(c=>new Date(c.created_at).getTime()>cutoff&&!dismissed.includes(c.id))},[changes,dismissed]);
-  if(recent.length===0)return null;
+  if(recent.length===0&&myApprovalPending.length===0&&myRequestUpdates.length===0)return null;
   const visible=expanded?recent:recent.slice(0,2);
   const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",gate:"게이트",locked:"잠금"};
   const fmt=(c)=>{const d=new Date(c.created_at);const md=(d.getMonth()+1)+"-"+String(d.getDate()).padStart(2,"0");
@@ -3502,11 +3905,16 @@ function NoticeBar({changes,user,onJump}){
     const isMine=user&&(own===user.name||c.changed_by===user.name);
     return{md,cn,isMine,fld:fmtField[c.field]||c.field,old:c.old_value||"-",nv:c.new_value||"-",reason:c.reason,by:c.changed_by}};
   return<div className="notice">
-    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+    {(myApprovalPending.length>0||myRequestUpdates.length>0)&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 10px",background:myApprovalPending.length>0?"#fef3c7":"var(--bg2)",border:"1px solid "+(myApprovalPending.length>0?"#fbbf24":"var(--bd)"),borderRadius:6}}>
+      {myApprovalPending.length>0&&<span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>📅 본인 승인 대기 {myApprovalPending.length}건</span>}
+      {myRequestUpdates.length>0&&<span style={{fontSize:11,color:"var(--t3)"}}>· 본인 요청 진행: {myRequestUpdates.filter(r=>r.status==="lvl1_approved").length}건 2차 대기 / {myRequestUpdates.filter(r=>r.status==="approved").length}건 승인 / {myRequestUpdates.filter(r=>r.status==="rejected").length}건 거절</span>}
+      {onOpenAdmin&&(user?.is_lead||user?.is_team_lead)&&<button onClick={onOpenAdmin} style={{marginLeft:"auto",background:"#92400e",color:"#fff",border:"none",borderRadius:4,padding:"3px 10px",fontSize:11,cursor:"pointer",fontWeight:600}}>승인 패널 열기</button>}
+    </div>}
+    {recent.length>0&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
       <span style={{fontWeight:700,color:"var(--or)"}}>📢 최근 일정 변경 ({recent.length})</span>
       <button onClick={()=>setExp(!expanded)} style={{marginLeft:"auto",background:"none",border:"1px solid var(--bd)",borderRadius:4,padding:"1px 8px",fontSize:11,cursor:"pointer",color:"var(--t3)"}}>{expanded?"접기":"전체 보기"}</button>
       <button onClick={()=>{const ids=recent.map(r=>r.id);const next=[...dismissed,...ids];localStorage.setItem("pipeline_dismissed_changes",JSON.stringify(next));setDis(next)}} style={{background:"none",border:"1px solid var(--bd)",borderRadius:4,padding:"1px 8px",fontSize:11,cursor:"pointer",color:"var(--t3)"}}>모두 확인</button>
-    </div>
+    </div>}
     {visible.map(c=>{const f=fmt(c);return<div key={c.id} className={"notice-row"+(f.isMine?" mine":"")} onClick={()=>onJump&&onJump(c.content_id)}>
       <span style={{color:"var(--t4)",fontSize:11,minWidth:34}}>{f.md}</span>
       <span style={{fontWeight:600}}>{f.cn}</span>
@@ -3524,16 +3932,46 @@ function fmtDate(d){const y=d.getFullYear();const mo=String(d.getMonth()+1).padS
 function isBusinessDay(d){const dow=d.getDay();if(dow===0||dow===6)return false;return !KR_HOLIDAYS_2026.has(fmtDate(d))}
 function addBusinessDays(startISO,n){if(!startISO)return null;const d=new Date(startISO+"T00:00:00");if(n===0)return fmtDate(d);const dir=n>0?1:-1;let rem=Math.abs(n);while(rem>0){d.setDate(d.getDate()+dir);if(isBusinessDay(d))rem--}return fmtDate(d)}
 function businessDaysDiff(d1ISO,d2ISO){if(!d1ISO||!d2ISO)return 0;if(d1ISO===d2ISO)return 0;const swap=d2ISO<d1ISO;const a=new Date((swap?d2ISO:d1ISO)+"T00:00:00");const b=new Date((swap?d1ISO:d2ISO)+"T00:00:00");let n=0;while(a<b){a.setDate(a.getDate()+1);if(isBusinessDay(a))n++}return swap?-n:n}
-/* cascade v2 영향 범위 계산: trigger task 의 old 기간과 시간상 겹치는 동일 워커 task 만 (1단계, chain X) */
+/* cascade v3 영향 범위 계산:
+   (a) Sub-Task cascade: trigger 의 자식 (parent_task_id === trigger.id) 은 워커/겹침 무관 항상 동기 (delta!=0)
+   (b) 워커 cascade: 동일 assignee + 기존 기간 겹침 (delta>0 만, 일정 밀림 시)
+   완료(done) 상태는 둘 다 제외. 1단계만 (chain X). */
 function computeAffectedTasks(triggerTask,oldStart,oldEnd,newStart,newEnd,allTasks){
   if(!oldStart||!oldEnd||!newStart||!newEnd)return [];
   const dStart=businessDaysDiff(oldStart,newStart);const dEnd=businessDaysDiff(oldEnd,newEnd);
   const delta=Math.max(dStart,dEnd);
-  if(delta<=0)return [];
-  return (allTasks||[])
-    .filter(t=>t.id!==triggerTask.id&&t.assignee_id===triggerTask.assignee_id&&(t.status==='waiting'||t.status==='progress')&&t.start_date&&t.end_date)
-    .filter(t=>{const ts=t.start_date.slice(0,10);const te=t.end_date.slice(0,10);return ts<=oldEnd&&te>=oldStart})
-    .map(t=>({task_id:t.id,title:t.title||t.title_object,current_start:t.start_date.slice(0,10),current_end:t.end_date.slice(0,10),proposed_start:addBusinessDays(t.start_date.slice(0,10),delta),proposed_end:addBusinessDays(t.end_date.slice(0,10),delta)}));
+  if(delta===0)return [];
+  const collected=new Map();
+  // (a) Sub-Task cascade: 부모 변경 시 모든 미완료 Sub-Task 동일 delta 이동
+  for(const t of (allTasks||[])){
+    if(t.id===triggerTask.id)continue;
+    if(t.parent_task_id!==triggerTask.id)continue;
+    if(t.status==='done')continue;
+    if(!t.start_date||!t.end_date)continue;
+    collected.set(t.id,{t,reason:'sub_task'});
+  }
+  // (b) 워커 cascade: delta>0 (일정 밀림) 시만 (당김 시는 빈 슬롯 만들 뿐 후속에 영향 X)
+  if(delta>0){
+    for(const t of (allTasks||[])){
+      if(t.id===triggerTask.id)continue;
+      if(collected.has(t.id))continue;
+      if(t.assignee_id!==triggerTask.assignee_id)continue;
+      if(t.status==='done')continue;
+      if(!t.start_date||!t.end_date)continue;
+      const ts=t.start_date.slice(0,10),te=t.end_date.slice(0,10);
+      if(!(ts<=oldEnd&&te>=oldStart))continue;
+      collected.set(t.id,{t,reason:'worker_overlap'});
+    }
+  }
+  return Array.from(collected.values()).map(({t,reason})=>({
+    task_id:t.id,
+    title:t.title_object||t.title,
+    current_start:t.start_date.slice(0,10),
+    current_end:t.end_date.slice(0,10),
+    proposed_start:addBusinessDays(t.start_date.slice(0,10),delta),
+    proposed_end:addBusinessDays(t.end_date.slice(0,10),delta),
+    cascade_reason:reason
+  }));
 }
 
 /* ═══ MAIN ═══ */
@@ -4132,14 +4570,14 @@ function App(){
         <div style={{fontSize:12,color:"var(--t3)",marginTop:1}}>{ct.length} 콘텐츠 · {wk.length} 작업자 · {allT.length} 태스크</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {st.cr>0&&<B ch={"위험 "+st.cr} c="b-r"/>}{st.w>0&&<B ch={"주의 "+st.w} c="b-o"/>}<B ch={st.t+" 콘텐츠"} c="b-g"/>
-        {user&&user.is_team_lead&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title="관리자 페이지" style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>⚙️ 관리자</button>}
+        {user&&(user.is_team_lead||user.is_lead)&&<button className="bt bt-s" onClick={()=>setAdminPanel(true)} title={user.is_team_lead?"관리자 페이지":"일정 조정 요청"} style={{background:"var(--ac-bg)",borderColor:"var(--ac)",color:"var(--ac)"}}>{user.is_team_lead?"⚙️ 관리자":"📅 승인 패널"}</button>}
         {user&&<span className="user-badge" onClick={signOut} title="로그아웃">
           {(user.is_team_lead||user.is_lead)?"★":""}{user.name}<span className="role">{roleLabel}</span>
         </span>}
         <button className="bt bt-i" onClick={load}>↻</button></div></div>
 
     {/* Notice */}
-    {!ld&&<NoticeBar changes={changes} user={user} onJump={handleJump}/>}
+    {!ld&&<NoticeBar changes={changes} user={user} onJump={handleJump} onOpenAdmin={()=>setAdminPanel(true)}/>}
 
     {/* Milestone Timeline */}
     {!ld&&ms.length>0&&<MilestoneTimeline milestones={ms} versions={vr}/>}
@@ -4169,7 +4607,7 @@ function App(){
 
     {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={(summary)=>{load(true);db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"import.run",target_table:"contents",target_id:null,payload:summary||{}})}}/>}
     {jiraSyncModal&&<JiraSyncModal tasks={allT} onClose={()=>setJiraSyncModal(false)} onDone={(summary)=>{load(true);db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"jira.sync",target_table:"tasks",target_id:null,payload:summary||{}})}}/>}
-    {adminPanel&&user&&user.is_team_lead&&<AdminPanel user={user} workers={wk} tasks={allT} onClose={()=>setAdminPanel(false)} onDone={()=>load(true)} onOpenImport={()=>{setAdminPanel(false);setImportModal(true)}} onOpenJira={()=>{setAdminPanel(false);setJiraSyncModal(true)}} onExportCSV={exportCSV}/>}
+    {adminPanel&&user&&(user.is_team_lead||user.is_lead)&&<AdminPanel user={user} workers={wk} tasks={allT} allTasks={allT} onClose={()=>setAdminPanel(false)} onDone={()=>load(true)} onOpenImport={()=>{setAdminPanel(false);setImportModal(true)}} onOpenJira={()=>{setAdminPanel(false);setJiraSyncModal(true)}} onExportCSV={exportCSV} onRefresh={load}/>}
     {toastMsg&&<div style={{position:"fixed",top:16,right:16,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.18)",zIndex:9999,animation:"toastIn .18s ease-out"}}>✓ {toastMsg}</div>}
   </div>
 }
