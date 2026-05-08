@@ -3672,8 +3672,10 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const isDirectApply=mode==='direct_apply';
   const curStart=task.start_date?task.start_date.slice(0,10):"";
   const curEnd=task.end_date?task.end_date.slice(0,10):"";
+  const curStatus=task.status||"waiting";
   const[ds,setDs]=useState(curStart);
   const[de,setDe]=useState(curEnd);
+  const[ns,setNs]=useState(curStatus); // direct_apply 모드: 새 status (admin 만 status 동시 변경)
   const[reason,setReason]=useState("");
   const[cascadeChecked,setCascadeChecked]=useState(true); // direct_apply 모드: cascade 적용 여부 (기본 ON)
   const[jiraSyncChecked,setJiraSyncChecked]=useState(true); // direct_apply 모드: JIRA 큐 적재 여부 (기본 ON)
@@ -3695,11 +3697,19 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const lvl2Required=delay>=7;
   const affected=useMemo(()=>computeAffectedTasks(task,curStart,curEnd,ds,de,allTasks||[]),[task,curStart,curEnd,ds,de,allTasks]);
   const extractJiraKey=(url)=>{const m=String(url||'').match(/([A-Z]+-\d+)/);return m?m[1]:null};
+  const dateChanged=ds!==curStart||de!==curEnd;
+  const statusChanged=isDirectApply&&ns!==curStatus;
   const submit=async()=>{
-    if(!ds||!de){setErr((isDirectApply?"새 ":"희망 ")+"시작/종료일 입력 필수");return}
-    if(de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
+    // 일정 입력은 둘 다 있거나 둘 다 없거나 (관리자 모드는 NULL 허용)
+    if(isDirectApply){
+      if((ds&&!de)||(!ds&&de)){setErr("시작/종료일은 둘 다 입력 또는 둘 다 비워주세요");return}
+      if(ds&&de&&de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
+    }else{
+      if(!ds||!de){setErr("희망 시작/종료일 입력 필수");return}
+      if(de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
+    }
     if(!reason.trim()){setErr((isDirectApply?"조정":"요청")+" 사유 입력 필수");return}
-    if(ds===curStart&&de===curEnd){setErr("일정이 현재와 동일함");return}
+    if(!dateChanged&&!statusChanged){setErr("일정 또는 상태 중 하나는 변경되어야 합니다");return}
     if(!isDirectApply&&!lvl1){setErr("1차 승인자(파트장) 미배정 - 관리자에게 문의");return}
     setSaving(true);setErr(null);
     if(isDirectApply){
@@ -3709,18 +3719,19 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
         const reasonCascade="관리자 직접 조정 cascade: "+reasonText;
         // 1) trigger task PATCH + schedule_changes
         const triggerPatch={updated_at:new Date().toISOString()};
-        if(ds!==curStart)triggerPatch.start_date=ds;
-        if(de!==curEnd)triggerPatch.end_date=de;
+        if(ds!==curStart)triggerPatch.start_date=ds||null;
+        if(de!==curEnd)triggerPatch.end_date=de||null;
+        if(statusChanged)triggerPatch.status=ns;
         await db.updTask(task.id,triggerPatch);
         if(ds!==curStart){
-          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"start_date",old_value:curStart||"-",new_value:ds,reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"start_date",old_value:curStart||"-",new_value:ds||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
         }
         if(de!==curEnd){
-          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"end_date",old_value:curEnd||"-",new_value:de,reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"end_date",old_value:curEnd||"-",new_value:de||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
         }
-        // 2) cascade affected tasks
+        // 2) cascade affected tasks (일정 변경 + delta>0 일 때만, dateChanged 없으면 affected 도 빈 배열)
         let cascadeApplied=0;
-        if(cascadeChecked&&affected.length>0){
+        if(cascadeChecked&&affected.length>0&&dateChanged){
           for(const a of affected){
             const aTask=(allTasks||[]).find(t=>t.id===a.task_id);
             if(!aTask)continue;
@@ -3736,9 +3747,9 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
             cascadeApplied++;
           }
         }
-        // 3) JIRA 큐 적재 (update_dates)
+        // 3) JIRA 큐 적재 (update_dates) - 일정 변경 + ds/de 둘 다 있을 때만
         let jiraQueued=0;
-        if(jiraSyncChecked){
+        if(jiraSyncChecked&&dateChanged&&ds&&de){
           const triggerKey=extractJiraKey(task.jira_url);
           if(triggerKey){
             await db.addJiraLog({operation_type:"update_dates",task_id:task.id,content_id:null,payload:{issue_key:triggerKey,start_date:ds,end_date:de},status:"pending"});
@@ -3823,6 +3834,18 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
           {lvl2Required&&<div>2차 (팀장): <span style={{fontWeight:600,color:lvl2?"var(--ac)":"var(--rd)"}}>{lvl2?lvl2.name:"미배정 ⚠"}</span></div>}
         </div>}
         {isDirectApply&&<div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)"}}>
+          <div style={{fontWeight:600,marginBottom:6,color:"var(--t2)"}}>상태 변경 (선택)</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontSize:11,color:"var(--t3)"}}>현재: <span style={{fontWeight:600,color:"var(--t2)"}}>{({waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"})[curStatus]||curStatus}</span></span>
+            <span style={{color:"var(--t4)"}}>→</span>
+            <select value={ns} onChange={e=>setNs(e.target.value)} style={{fontSize:12,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:3,fontFamily:"inherit"}}>
+              <option value="waiting">대기</option>
+              <option value="progress">진행 중</option>
+              <option value="done">완료</option>
+              <option value="blocked">차단</option>
+            </select>
+            {statusChanged&&<span style={{fontSize:10,padding:"1px 5px",background:"#7c3aed",color:"#fff",borderRadius:2,fontWeight:600}}>변경됨</span>}
+          </div>
           <div style={{fontWeight:600,marginBottom:6,color:"var(--t2)"}}>적용 옵션</div>
           <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer"}}>
             <input type="checkbox" checked={cascadeChecked} onChange={e=>setCascadeChecked(e.target.checked)} disabled={affected.length===0}/>
@@ -3875,7 +3898,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
       </div>
       <div className="modal-f">
         <button className="bt" onClick={onClose} disabled={saving}>취소</button>
-        <button className={"bt "+(isDirectApply?"":"bt-g")} onClick={submit} disabled={saving||!reason.trim()||(!isDirectApply&&!lvl1)}
+        <button className={"bt "+(isDirectApply?"":"bt-g")} onClick={submit} disabled={saving||!reason.trim()||(!isDirectApply&&!lvl1)||(isDirectApply&&!dateChanged&&!statusChanged)}
           style={isDirectApply?{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}:undefined}>
           {saving?(isDirectApply?"적용 중...":"저장 중..."):submitLabel}
         </button>
