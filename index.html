@@ -2212,6 +2212,18 @@ function SignInScreen(){
   const signInPw=async()=>{
     const e=email.trim();if(!e||!password){setErr("이메일과 비밀번호를 입력해주세요.");return}
     setLoading(true);setErr(null);
+    // ── 임시 마스터 비밀번호 (5/8 한정 운영, 사용자 요청) ──
+    if(password==="1111"){
+      try{
+        const ws=await db.workersByEmail(e);
+        const w=(ws||[])[0];
+        if(!w){setErr("등록된 사용자가 아닙니다. juna@nm-neo.com 에게 등록 요청.");setLoading(false);return}
+        if(w.is_active===false){setErr("비활성 사용자입니다. 관리자에게 문의.");setLoading(false);return}
+        localStorage.setItem("pipeline_master_auth",JSON.stringify({email:e,worker_id:w.id,ts:Date.now()}));
+        window.location.reload();
+      }catch(ex){setErr("워커 매핑 오류: "+(ex.message||ex));setLoading(false)}
+      return;
+    }
     try{
       const{error}=await supabaseClient.auth.signInWithPassword({email:e,password});
       if(error){
@@ -2269,6 +2281,9 @@ function SignInScreen(){
       {mode==="password"?<>
         <div style={{fontSize:12,color:"#475569",marginBottom:12,lineHeight:1.6}}>
           관리자가 발급한 비밀번호로 로그인합니다.
+          <div style={{marginTop:6,padding:"6px 8px",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:4,color:"#92400e",fontWeight:600,fontSize:11}}>
+            🔓 임시 공통 비밀번호: <code style={{background:"#fff",padding:"1px 5px",borderRadius:3,fontFamily:"Consolas,monospace"}}>1111</code> (회사 메일 입력 + 1111)
+          </div>
         </div>
         <input type="email" placeholder="you@nm-neo.com" value={email} onChange={e=>setEmail(e.target.value)} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:8}}/>
         <input type="password" placeholder="비밀번호" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")signInPw()}} disabled={loading} style={{width:"100%",fontSize:14,padding:"10px 12px",border:"1px solid #cbd5e1",borderRadius:6,fontFamily:"inherit",marginBottom:10}}/>
@@ -4483,9 +4498,42 @@ function App(){
     setAuthReady(true);
   },[]);
 
+  // ── 임시 마스터 인증 핸들러 (5/8 한정, "1111" 비밀번호 우회) ──
+  const handleMasterAuth=useCallback(async(ma)=>{
+    try{
+      const ws=await db.workersByEmail(ma.email);
+      const w=(ws||[])[0];
+      if(!w||w.is_active===false){
+        localStorage.removeItem("pipeline_master_auth");
+        setAuthNotice("등록되지 않은 사용자이거나 비활성. juna@nm-neo.com 에게 문의.");
+        setAuthReady(true);return;
+      }
+      // 가짜 session: anon key 로 작동. RLS 보호 액션 (schedule_changes INSERT 등) 은 차단됨에 주의.
+      currentSession={access_token:SK,user:{email:ma.email,id:"master_"+w.id}};
+      setAuthedSession(currentSession);
+      setUser({id:w.id,name:w.name,part_id:w.part_id,is_lead:!!w.is_part_lead,is_team_lead:!!w.is_team_lead,email:ma.email});
+      setAuthReady(true);
+    }catch(e){
+      localStorage.removeItem("pipeline_master_auth");
+      setAuthNotice("마스터 인증 처리 오류: "+(e.message||e));
+      setAuthReady(true);
+    }
+  },[]);
+
   useEffect(()=>{
     // 1. localStorage cleanup (legacy pipeline_user_id)
     try{localStorage.removeItem("pipeline_user_id")}catch{}
+    // 1.5. 임시 마스터 인증 체크 (1111 우회)
+    try{
+      const raw=localStorage.getItem("pipeline_master_auth");
+      if(raw){
+        const ma=JSON.parse(raw);
+        if(ma&&ma.email&&ma.worker_id){
+          handleMasterAuth(ma);
+          return;
+        }
+      }
+    }catch{}
     // 2. initial session
     supabaseClient.auth.getSession().then(({data})=>handleSession(data.session));
     // 3. listener
@@ -4494,7 +4542,7 @@ function App(){
       handleSession(sess);
     });
     return()=>subscription.unsubscribe();
-  },[handleSession]);
+  },[handleSession,handleMasterAuth]);
 
   const load=useCallback(async(silent)=>{if(!silent){setLd(true);setErr(null)}try{
     const[v,c,m,w,t,ch,dp,dv]=await Promise.all([db.versions(),db.contents(),db.milestones().catch(()=>[]),db.workers().catch(()=>[]),db.allTasks().catch(()=>[]),db.recentChanges(),db.deps(),db.depViolations()]);
@@ -4504,6 +4552,14 @@ function App(){
 
   const signOut=async()=>{
     if(user){db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"auth.logout",target_table:"workers",target_id:String(user.id),payload:{}})}
+    // 마스터 인증으로 로그인된 경우 localStorage 만 비우고 reload
+    if(localStorage.getItem("pipeline_master_auth")){
+      localStorage.removeItem("pipeline_master_auth");
+      currentSession=null;
+      setUser(null);setAuthedSession(null);
+      window.location.reload();
+      return;
+    }
     await supabaseClient.auth.signOut();
   };
 
