@@ -375,13 +375,18 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
           const all=(workerTasks[w.id]||[]);
           const top=all.filter(t=>!t.parent_task_id);
           const childrenByParent={};all.forEach(t=>{if(t.parent_task_id){if(!childrenByParent[t.parent_task_id])childrenByParent[t.parent_task_id]=[];childrenByParent[t.parent_task_id].push(t)}});
-          r.push({type:"worker",worker:w,tasks:top,expanded:!!expandedW[w.id],_key:"w_"+pid+"_"+w.id});
+          // 미펼침: worker row 에 모든 task (parent + child) 막대 표시
+          // 펼침: worker row 에 top 만 + child 는 task row 별도 노출 (중복 회피)
+          r.push({type:"worker",worker:w,tasks:expandedW[w.id]?top:all,expanded:!!expandedW[w.id],_key:"w_"+pid+"_"+w.id});
           if(expandedW[w.id]){
             top.forEach(t=>{
               const kids=childrenByParent[t.id]||[];
               r.push({type:"task",task:{...t,_child_count:kids.length},worker:w,_key:"t_"+t.id});
               if(expandedT[t.id])kids.forEach(c=>r.push({type:"task",task:c,worker:w,_is_child:true,_key:"tc_"+c.id}));
             });
+            // orphan child (parent 가 본인 담당이 아닌 경우) 도 별도 노출
+            const orphanChildren=all.filter(t=>t.parent_task_id&&!top.some(p=>p.id===t.parent_task_id));
+            orphanChildren.forEach(c=>r.push({type:"task",task:c,worker:w,_key:"to_"+c.id}));
           }
         });
       }
@@ -3876,6 +3881,18 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
             <span>JIRA 일정 동기 큐 적재 (update_dates, jira_url 있는 task 만)</span>
           </label>
         </div>}
+        {(()=>{
+          // done parent 경고: child 일정이 done parent 범위 밖으로 나가는 경우
+          if(!task.parent_task_id||!ds||!de)return null;
+          const parent=(allTasks||[]).find(t=>t.id===task.parent_task_id);
+          if(!parent||parent.status!=='done'||!parent.start_date||!parent.end_date)return null;
+          const ps=parent.start_date.slice(0,10),pe=parent.end_date.slice(0,10);
+          if(ds>=ps&&de<=pe)return null;
+          return<div style={{marginBottom:10,padding:"8px 10px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,fontSize:11,color:"#991b1b"}}>
+            ⚠ 부모 task #{parent.id} 가 status=done (일정 {ps}~{pe}) 입니다. 자동 확장 대상에서 제외됩니다.
+            <br/>이 자식 일정 변경은 적용되지만 부모 일정과 어긋납니다. 별도 부모 분리 또는 부모 재오픈 필요.
+          </div>;
+        })()}
         {affected.length>0&&<div style={{marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:"var(--t2)"}}>
             📊 영향 받는 task ({affected.length}건)
@@ -3883,6 +3900,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
               {affected.filter(a=>a.cascade_reason==='sub_task').length>0&&"Sub-Task "+affected.filter(a=>a.cascade_reason==='sub_task').length+"건"}
               {affected.filter(a=>a.cascade_reason==='sub_task').length>0&&affected.filter(a=>a.cascade_reason==='worker_overlap').length>0&&" / "}
               {affected.filter(a=>a.cascade_reason==='worker_overlap').length>0&&"동일 워커+겹침 "+affected.filter(a=>a.cascade_reason==='worker_overlap').length+"건"}
+              {affected.filter(a=>a.cascade_reason==='parent_expand').length>0&&((affected.filter(a=>a.cascade_reason==='sub_task').length>0||affected.filter(a=>a.cascade_reason==='worker_overlap').length>0)?" / ":"")+"부모 자동 확장 "+affected.filter(a=>a.cascade_reason==='parent_expand').length+"건"}
             </span>
           </div>
           <div style={{maxHeight:180,overflow:"auto",border:"1px solid var(--bd)",borderRadius:4}}>
@@ -3900,6 +3918,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
                 {affected.map(a=><tr key={a.task_id} style={{borderBottom:"1px solid var(--bg3)"}}>
                   <td style={{padding:"4px 6px"}}>
                     {a.cascade_reason==='sub_task'?<span style={{padding:"1px 5px",background:"#fef3c7",color:"#92400e",borderRadius:2,fontSize:9,fontWeight:600}}>Sub</span>
+                      :a.cascade_reason==='parent_expand'?<span style={{padding:"1px 5px",background:"#dcfce7",color:"#166534",borderRadius:2,fontSize:9,fontWeight:600}}>부모</span>
                       :<span style={{padding:"1px 5px",background:"#e0e7ff",color:"#4338ca",borderRadius:2,fontSize:9,fontWeight:600}}>워커</span>}
                   </td>
                   <td style={{padding:"4px 6px",color:"var(--t4)"}}>{a.task_id}</td>
@@ -3983,15 +4002,16 @@ function computeAffectedTasks(triggerTask,oldStart,oldEnd,newStart,newEnd,allTas
   if(!oldStart||!oldEnd||!newStart||!newEnd)return [];
   const dStart=businessDaysDiff(oldStart,newStart);const dEnd=businessDaysDiff(oldEnd,newEnd);
   const delta=Math.max(dStart,dEnd);
-  if(delta===0)return [];
   const collected=new Map();
   // (a) Sub-Task cascade: 부모 변경 시 모든 미완료 Sub-Task 동일 delta 이동
-  for(const t of (allTasks||[])){
-    if(t.id===triggerTask.id)continue;
-    if(t.parent_task_id!==triggerTask.id)continue;
-    if(t.status==='done')continue;
-    if(!t.start_date||!t.end_date)continue;
-    collected.set(t.id,{t,reason:'sub_task'});
+  if(delta!==0){
+    for(const t of (allTasks||[])){
+      if(t.id===triggerTask.id)continue;
+      if(t.parent_task_id!==triggerTask.id)continue;
+      if(t.status==='done')continue;
+      if(!t.start_date||!t.end_date)continue;
+      collected.set(t.id,{t,reason:'sub_task'});
+    }
   }
   // (b) 워커 cascade: delta>0 (일정 밀림) 시만 (당김 시는 빈 슬롯 만들 뿐 후속에 영향 X)
   if(delta>0){
@@ -4006,13 +4026,26 @@ function computeAffectedTasks(triggerTask,oldStart,oldEnd,newStart,newEnd,allTas
       collected.set(t.id,{t,reason:'worker_overlap'});
     }
   }
-  return Array.from(collected.values()).map(({t,reason})=>({
+  // (c) Parent expansion: child 변경이 parent 범위 밖으로 나가면 parent 일정 자동 확장
+  // status=done parent 는 제외 (이력 왜곡 방지). triggerTask 가 child 일 때만 작동.
+  if(triggerTask.parent_task_id){
+    const parent=(allTasks||[]).find(t=>t.id===triggerTask.parent_task_id);
+    if(parent&&parent.start_date&&parent.end_date&&parent.status!=='done'){
+      const ps=parent.start_date.slice(0,10),pe=parent.end_date.slice(0,10);
+      const newPs=newStart<ps?newStart:ps;
+      const newPe=newEnd>pe?newEnd:pe;
+      if(newPs!==ps||newPe!==pe){
+        collected.set(parent.id,{t:parent,reason:'parent_expand',forced_start:newPs,forced_end:newPe});
+      }
+    }
+  }
+  return Array.from(collected.values()).map(({t,reason,forced_start,forced_end})=>({
     task_id:t.id,
     title:t.title_object||t.title,
     current_start:t.start_date.slice(0,10),
     current_end:t.end_date.slice(0,10),
-    proposed_start:addBusinessDays(t.start_date.slice(0,10),delta),
-    proposed_end:addBusinessDays(t.end_date.slice(0,10),delta),
+    proposed_start:forced_start||addBusinessDays(t.start_date.slice(0,10),delta),
+    proposed_end:forced_end||addBusinessDays(t.end_date.slice(0,10),delta),
     cascade_reason:reason
   }));
 }
