@@ -3877,15 +3877,60 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
     {showDirect&&<ScheduleRequestModal task={task} mode='direct_apply' user={user} workers={workers} allTasks={allTasks} zOverride={9999}
       onClose={()=>setShowDirect(false)}
       onDone={(res)=>{setShowDirect(false);onRefresh&&onRefresh(task.id);const msg="✓ "+(res?.applied||1)+"건 적용"+(res?.jiraQueued?" / JIRA 큐 "+res.jiraQueued+"건":"");window.showToast&&window.showToast(msg)}}/>}
-    {showNewSub&&<NewSubTaskModal parentTask={task} user={user} workers={workers} allTasks={allTasks} zOverride={9999}
+    {showNewSub&&<NewSubTaskModal parentTask={task} user={user} workers={workers} allTasks={allTasks} contents={contents} zOverride={9999}
       onClose={()=>setShowNewSub(false)}
       onDone={(res)=>{setShowNewSub(false);onRefresh&&onRefresh(task.id);const msg="✓ Sub-Task #"+res?.newTaskId+" 등록"+(res?.parentExpanded?" / 부모 일정 자동 확장":"");window.showToast&&window.showToast(msg)}}/>}
   </>;
 }
 
+/* ═══ JIRA prefill 자산 (v22 Track A-2, 메모리 reference_jira_operations + project_alup01_jira_bulk 기반) ═══ */
+const JIRA_BASE="https://jira.nmn.io";
+const JIRA_PROJECT_KEY="PROJECTT";
+// customfield IDs (PROJECTT, classic JIRA Server)
+const JIRA_CF_SPRINT="customfield_13100";
+const JIRA_CF_EPIC="customfield_13101";
+// 워커 이름 → JIRA username 매핑 (9명, 메모리 reference_jira_operations 자산)
+const WORKER_JIRA_MAP={"박찬현":"chanhyun","정하진":"hajin","곽명준":"myungjun","최중훈":"joonghoon","윤경열":"kyoungyeol","안태경":"taegyeong","권재만":"jaemann","임주원":"imjuwon","정성민":"sungmin.jung"};
+// version_id → JIRA fixVersion / sprint / epic 매핑 (UP01 만 확정, 나머지는 사용자 1회 캡처 후 확장)
+const VERSION_JIRA_MAP={"UP01":{fixVersion:73046,sprint:5745,epic:"PROJECTT-16638",label:"[AL01]_스톰랜드지역확장",component:31125}};
+function buildJiraCreateUrl({parentTask,newTaskTitle,newTaskStart,newTaskEnd,assigneeWorker,versionId,actionVerb,reason,content}){
+  const params=new URLSearchParams();
+  params.set("pname",JIRA_PROJECT_KEY); // JIRA Server name 기반 project (pid 숫자 불필요)
+  params.set("summary",newTaskTitle);
+  const descLines=[
+    "부모 task: #"+parentTask.id+" "+(parentTask.title_object||parentTask.title||""),
+    parentTask.jira_url?"부모 JIRA: "+parentTask.jira_url:null,
+    "일정: "+newTaskStart+" ~ "+newTaskEnd,
+    "작업 유형: "+actionVerb,
+    "담당자: "+(assigneeWorker?.name||"-"),
+    versionId?"버전: "+versionId:null,
+    reason?"사유: "+reason:null,
+    "",
+    "(트래커에서 자동 생성된 prefill - 검수 후 Create)"
+  ].filter(Boolean);
+  params.set("description",descLines.join("\n"));
+  if(assigneeWorker&&WORKER_JIRA_MAP[assigneeWorker.name]){
+    params.set("assignee",WORKER_JIRA_MAP[assigneeWorker.name]);
+  }
+  if(newTaskEnd)params.set("duedate",newTaskEnd);
+  const vmap=VERSION_JIRA_MAP[versionId];
+  if(vmap){
+    if(vmap.fixVersion)params.set("fixVersions",String(vmap.fixVersion));
+    if(vmap.sprint)params.set(JIRA_CF_SPRINT,String(vmap.sprint));
+    if(vmap.epic)params.set(JIRA_CF_EPIC,vmap.epic);
+    if(vmap.component)params.set("components",String(vmap.component));
+    if(vmap.label)params.set("labels",vmap.label);
+  }else if(content&&content.category){
+    // fallback: 콘텐츠 카테고리 → 라벨 (공백 → underscore, F_JiraLabelConvention 준수)
+    params.set("labels",content.category.replace(/\s+/g,"_"));
+  }
+  // JIRA Server classic CreateIssue page (Sub-Task 는 사용자가 새 탭에서 issuetype 선택)
+  return JIRA_BASE+"/secure/CreateIssue!default.jspa?"+params.toString();
+}
+
 /* ═══ NEW SUB-TASK MODAL (v22 Track A: 패널에서 신규 sub-task 등록) ═══ */
 /* parent task 아래 신규 sub-task INSERT + 자동 parent expand + JIRA prefill 옵션 */
-function NewSubTaskModal({parentTask,user,workers,allTasks,zOverride,onClose,onDone}){
+function NewSubTaskModal({parentTask,user,workers,allTasks,contents,zOverride,onClose,onDone}){
   const ACTION_VERBS=[
     {v:"design",l:"기획"},{v:"implement",l:"구현"},{v:"polish",l:"폴리싱"},
     {v:"resource",l:"리소스 제작"},{v:"feedback",l:"피드백 반영"},{v:"qa",l:"QA"},
@@ -3960,13 +4005,21 @@ function NewSubTaskModal({parentTask,user,workers,allTasks,zOverride,onClose,onD
         if(patch.end_date)await db.addChange({content_id:parentTask.content_id||null,task_id:parentTask.id,field:"end_date",old_value:parentExpand.old_end,new_value:parentExpand.new_end,reason:"신규 sub-task #"+newTask.id+" 등록에 따른 parent 자동 확장",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
         parentExpanded=true;
       }
-      // 4) JIRA prefill 새 탭
+      // 4) JIRA prefill 새 탭 (v22 Track A-2: project/assignee/fixVersion/sprint/epic/labels 보강)
       if(openJira){
-        // 사내 JIRA URL: https://jira.nmn.io/secure/CreateIssue.jspa?... (사용자 사내 SSO 로그인 가정)
-        // pid/issuetype 숫자 ID 없이도 user 가 선택 가능하도록 summary/description 만 prefill
-        const summary=encodeURIComponent(title.trim());
-        const desc=encodeURIComponent("부모: #"+parentTask.id+" "+(parentTask.title_object||parentTask.title||"")+"\n일정: "+ds+" ~ "+de+"\n담당자: "+((workers||[]).find(w=>w.id===assigneeId)?.name||"-")+"\n트래커 task: #"+newTask.id+"\n사유: "+reasonText);
-        const jiraUrl="https://jira.nmn.io/secure/CreateIssue.jspa?summary="+summary+"&description="+desc;
+        const assigneeWorker=(workers||[]).find(w=>w.id===assigneeId);
+        const contentObj=(contents||[]).find(c=>c.id===parentTask.content_id);
+        const jiraUrl=buildJiraCreateUrl({
+          parentTask,
+          newTaskTitle:title.trim(),
+          newTaskStart:ds,
+          newTaskEnd:de,
+          assigneeWorker,
+          versionId:versionId||null,
+          actionVerb,
+          reason:reasonText,
+          content:contentObj
+        });
         window.open(jiraUrl,"_blank","noopener");
       }
       onDone&&onDone({newTaskId:newTask.id,parentExpanded});
