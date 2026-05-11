@@ -86,7 +86,7 @@ const supabaseClient=window.supabase.createClient(SU,SK,{auth:{persistSession:tr
 let currentSession=null;
 const FH=()=>({"apikey":SK,"Authorization":"Bearer "+(currentSession?.access_token||SK),"Content-Type":"application/json"});
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH(),Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),taskChanges:t=>q("schedule_changes?task_id=eq."+t+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),jiraQueueStatus:()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at,contents(name,type),tasks(title,title_object)&order=created_at.desc&limit=80").catch(()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at&order=created_at.desc&limit=80").catch(()=>[])),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),scheduleRequests:()=>q("schedule_change_requests?select=*,tasks(id,title,title_object,start_date,end_date,assignee_id,workers(id,name,part_id)),requester:requester_id(id,name,part_id),lvl1_approver:lvl1_approver_id(id,name),lvl2_approver:lvl2_approver_id(id,name)&order=created_at.desc&limit=200").catch(()=>q("schedule_change_requests?select=*&order=created_at.desc&limit=200").catch(()=>[])),scheduleRequestsByMe:wid=>q("schedule_change_requests?requester_id=eq."+wid+"&select=*&order=created_at.desc").catch(()=>[]),scheduleRequestsForApproval:wid=>q("schedule_change_requests?or=(lvl1_approver_id.eq."+wid+",lvl2_approver_id.eq."+wid+")&status=in.(pending,lvl1_approved)&select=*,tasks(title,title_object),requester:requester_id(name,part_id)&order=created_at.desc").catch(()=>[]),addScheduleRequest:d=>q("schedule_change_requests",{method:"POST",body:JSON.stringify(d)}),updScheduleRequest:(i,d)=>q("schedule_change_requests?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),delScheduleRequest:i=>q("schedule_change_requests?id=eq."+i,{method:"DELETE"})};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),delTask:i=>q("tasks?id=eq."+i,{method:"DELETE"}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),taskChanges:t=>q("schedule_changes?task_id=eq."+t+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),jiraQueueStatus:()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at,contents(name,type),tasks(title,title_object)&order=created_at.desc&limit=80").catch(()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at&order=created_at.desc&limit=80").catch(()=>[])),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),scheduleRequests:()=>q("schedule_change_requests?select=*,tasks(id,title,title_object,start_date,end_date,assignee_id,workers(id,name,part_id)),requester:requester_id(id,name,part_id),lvl1_approver:lvl1_approver_id(id,name),lvl2_approver:lvl2_approver_id(id,name)&order=created_at.desc&limit=200").catch(()=>q("schedule_change_requests?select=*&order=created_at.desc&limit=200").catch(()=>[])),scheduleRequestsByMe:wid=>q("schedule_change_requests?requester_id=eq."+wid+"&select=*&order=created_at.desc").catch(()=>[]),scheduleRequestsForApproval:wid=>q("schedule_change_requests?or=(lvl1_approver_id.eq."+wid+",lvl2_approver_id.eq."+wid+")&status=in.(pending,lvl1_approved)&select=*,tasks(title,title_object),requester:requester_id(name,part_id)&order=created_at.desc").catch(()=>[]),addScheduleRequest:d=>q("schedule_change_requests",{method:"POST",body:JSON.stringify(d)}),updScheduleRequest:(i,d)=>q("schedule_change_requests?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),delScheduleRequest:i=>q("schedule_change_requests?id=eq."+i,{method:"DELETE"})};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -3769,6 +3769,7 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const[showRequest,setShowRequest]=useState(false);
   const[showDirect,setShowDirect]=useState(false);
   const[showNewSub,setShowNewSub]=useState(false);
+  const[showDelete,setShowDelete]=useState(false);
   useEffect(()=>{
     if(!task){setHistory([]);return}
     setHistLoading(true);
@@ -3797,6 +3798,8 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const isDone=task.status==='done';
   // v22 Track A: + Sub-Task 추가 권한 = 관리자 + 본인 owner (parent 인 경우)
   const canAddSub=isAdmin||isMyTask;
+  // v22 Track A-3: 삭제 권한 = 관리자만 (본인 owner 도 1차 시안에서는 제외, 이력 보존)
+  const canDelete=isAdmin&&!isDone;
   const STATUS_L={waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"};
   const STATUS_C={waiting:"#6b7280",progress:"#0891b2",done:"#059669",blocked:"#dc2626"};
   const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트"};
@@ -3867,6 +3870,7 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
         {!isDone&&isMyTask&&<button className="bt bt-s" onClick={()=>setShowRequest(true)} style={{background:"#0891b2",color:"#fff",borderColor:"#0891b2"}}>📅 일정 조정 요청</button>}
         {!isDone&&isAdmin&&<button className="bt bt-s" onClick={()=>setShowDirect(true)} style={{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}}>⚡ 직접 조정</button>}
         {canAddSub&&<button className="bt bt-s" onClick={()=>setShowNewSub(true)} style={{background:"#059669",color:"#fff",borderColor:"#059669"}}>+ Sub-Task 추가</button>}
+        {canDelete&&<button className="bt bt-s" onClick={()=>setShowDelete(true)} title="태스크 삭제 (관리자)" style={{background:"#fff",color:"#dc2626",borderColor:"#dc2626"}}>🗑 삭제</button>}
         {isDone&&!canAddSub&&<span style={{fontSize:11,color:"var(--t4)"}}>완료된 태스크는 편집 불가</span>}
         <button className="bt bt-s" onClick={onClose} style={{marginLeft:"auto"}}>닫기</button>
       </div>
@@ -3880,6 +3884,9 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
     {showNewSub&&<NewSubTaskModal parentTask={task} user={user} workers={workers} allTasks={allTasks} contents={contents} zOverride={9999}
       onClose={()=>setShowNewSub(false)}
       onDone={(res)=>{setShowNewSub(false);onRefresh&&onRefresh(task.id);const msg="✓ Sub-Task #"+res?.newTaskId+" 등록"+(res?.parentExpanded?" / 부모 일정 자동 확장":"");window.showToast&&window.showToast(msg)}}/>}
+    {showDelete&&<DeleteTaskModal task={task} user={user} allTasks={allTasks} zOverride={9999}
+      onClose={()=>setShowDelete(false)}
+      onDone={(res)=>{setShowDelete(false);const msg="🗑 #"+task.id+" 삭제됨";window.showToast&&window.showToast(msg);onClose();onRefresh&&onRefresh(null)}}/>}
   </>;
 }
 
@@ -4106,6 +4113,72 @@ function NewSubTaskModal({parentTask,user,workers,allTasks,contents,zOverride,on
   </div>;
 }
 
+/* ═══ DELETE TASK MODAL (v22 Track A-3) ═══ */
+/* 관리자 전용. 사유 입력 필수. 본인 children 있는 경우 경고 표시 + 차단. */
+function DeleteTaskModal({task,user,allTasks,zOverride,onClose,onDone}){
+  const[reason,setReason]=useState("");
+  const[ack,setAck]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState(null);
+  const children=useMemo(()=>(allTasks||[]).filter(t=>t.parent_task_id===task.id),[allTasks,task.id]);
+  const hasChildren=children.length>0;
+  const submit=async()=>{
+    if(!reason.trim()){setErr("삭제 사유 입력 필수");return}
+    if(hasChildren){setErr("Sub-Task "+children.length+"건이 연결되어 있어 삭제 차단. 자식 task 부터 먼저 삭제하세요");return}
+    if(!ack){setErr("확인 체크박스 클릭 필요");return}
+    setSaving(true);setErr(null);
+    try{
+      const reasonText=reason.trim();
+      const oldRange=(task.start_date?task.start_date.slice(0,10):"-")+"~"+(task.end_date?task.end_date.slice(0,10):"-");
+      // 1) schedule_changes "delete" 이력 (DELETE 전, content_id 보존)
+      await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"delete",old_value:oldRange,new_value:"-",reason:reasonText+" (관리자 삭제, 제목: "+(task.title_object||task.title||"")+", parent #"+(task.parent_task_id||"-")+")",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+      // 2) DELETE
+      await db.delTask(task.id);
+      onDone&&onDone({deletedId:task.id});
+      onClose();
+    }catch(e){setErr("삭제 실패: "+(e.message||e));setSaving(false)}
+  };
+  return<div className="modal-bg" onClick={onClose} style={zOverride?{zIndex:zOverride}:undefined}>
+    <div className="modal" style={{maxWidth:520,width:"94vw"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{background:"#dc2626",color:"#fff"}}>🗑 태스크 삭제 - #{task.id} {task.title_object||task.title}</div>
+      <div className="modal-b" style={{maxHeight:"70vh",overflow:"auto"}}>
+        <div style={{padding:"8px 12px",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6,fontSize:11,color:"#991b1b",marginBottom:12,lineHeight:1.6}}>
+          ⚠ <b>되돌릴 수 없는 작업</b>: DELETE 후 task row 자체가 제거됩니다. schedule_changes 에 "delete" 이력 1건 남김. JIRA 일감은 별도 정리 필요 (현재 자동 처리 안됨).
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:"6px 12px",fontSize:12,marginBottom:12}}>
+          <div style={{color:"var(--t4)"}}>제목</div>
+          <div style={{fontWeight:600}}>{task.title_object||task.title||"(제목 없음)"}</div>
+          <div style={{color:"var(--t4)"}}>일정</div>
+          <div>{task.start_date?task.start_date.slice(0,10):"-"} ~ {task.end_date?task.end_date.slice(0,10):"-"}</div>
+          <div style={{color:"var(--t4)"}}>상태</div>
+          <div>{({waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"})[task.status]||task.status}</div>
+          {task.parent_task_id&&<><div style={{color:"var(--t4)"}}>부모</div><div>#{task.parent_task_id}</div></>}
+          {task.jira_url&&<><div style={{color:"var(--t4)"}}>JIRA</div><div><a href={task.jira_url} target="_blank" rel="noopener" style={{color:"var(--ac)"}}>{task.jira_url.split("/").pop()}</a> <span style={{color:"#991b1b",fontSize:11}}>(JIRA 일감 별도 정리 필요)</span></div></>}
+        </div>
+        {hasChildren&&<div style={{padding:"8px 12px",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6,fontSize:11,color:"#991b1b",marginBottom:12,lineHeight:1.6}}>
+          ⛔ <b>Sub-Task {children.length}건 연결됨</b> - 삭제 차단됨. 먼저 자식 task 부터 삭제하세요.
+          <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:2}}>
+            {children.slice(0,10).map(c=><div key={c.id} style={{fontSize:10,color:"#7f1d1d"}}>· #{c.id} {c.title_object||c.title}</div>)}
+            {children.length>10&&<div style={{fontSize:10,color:"#7f1d1d"}}>외 {children.length-10}건</div>}
+          </div>
+        </div>}
+        <div style={{fontSize:11,color:"var(--t3)",marginBottom:6}}>삭제 사유 <span style={{color:"var(--rd)"}}>*</span></div>
+        <textarea autoFocus value={reason} onChange={e=>setReason(e.target.value)} placeholder="예: 중복 등록 / 오등록 / 폴리싱 트랙 분리 등"
+          style={{width:"100%",minHeight:60,fontSize:13,padding:"8px 10px",border:"1px solid var(--bd)",borderRadius:6,fontFamily:"inherit",resize:"vertical",marginBottom:10}}/>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer",marginBottom:8,color:"#991b1b"}}>
+          <input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>
+          <span>이 태스크를 완전히 삭제하며, 되돌릴 수 없음을 확인합니다.</span>
+        </label>
+        {err&&<div style={{padding:"6px 10px",background:"var(--rd-bg)",color:"var(--rd)",borderRadius:4,fontSize:12,marginBottom:6}}>{err}</div>}
+      </div>
+      <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="bt bt-s" onClick={onClose} disabled={saving}>취소</button>
+        <button className="bt bt-s" onClick={submit} disabled={saving||!reason.trim()||!ack||hasChildren} style={{background:"#dc2626",color:"#fff",borderColor:"#dc2626"}}>{saving?"삭제 중...":"🗑 삭제 확정"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 /* ═══ PENDING SCHEDULE DETECTION (v22 Track 7) ═══ */
 /* A=NULL B=공휴일/주말-only C=인접공백5+영업일 D=동일parent+동일일정3+ */
 function detectPendingScheduleTasks(allTasks){
@@ -4156,12 +4229,22 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const curStart=task.start_date?task.start_date.slice(0,10):"";
   const curEnd=task.end_date?task.end_date.slice(0,10):"";
   const curStatus=task.status||"waiting";
+  // v22 Track A-5: 직접 조정 모달 메타 필드
+  const curTitle=task.title_object||task.title||"";
+  const curNotes=task.notes||"";
+  const curJiraUrl=task.jira_url||"";
+  const curVersionId=task.version_id||"";
   const[ds,setDs]=useState(curStart);
   const[de,setDe]=useState(curEnd);
   const[ns,setNs]=useState(curStatus); // direct_apply 모드: 새 status (admin 만 status 동시 변경)
+  const[nTitle,setNTitle]=useState(curTitle);
+  const[nNotes,setNNotes]=useState(curNotes);
+  const[nJiraUrl,setNJiraUrl]=useState(curJiraUrl);
+  const[nVersionId,setNVersionId]=useState(curVersionId);
   const[reason,setReason]=useState("");
   const[cascadeChecked,setCascadeChecked]=useState(true); // direct_apply 모드: cascade 적용 여부 (기본 ON)
   const[jiraSyncChecked,setJiraSyncChecked]=useState(true); // direct_apply 모드: JIRA 큐 적재 여부 (기본 ON)
+  const[showMeta,setShowMeta]=useState(false); // direct_apply 모드: 메타 필드 expand
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState(null);
   // 승인자 자동 배정 (request 모드만): 1차 = 태스크 담당자 같은 파트의 part_lead / 2차 = team_lead (1주일 이상 시)
@@ -4185,6 +4268,19 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const extractJiraKey=(url)=>{const m=String(url||'').match(/([A-Z]+-\d+)/);return m?m[1]:null};
   const dateChanged=ds!==curStart||de!==curEnd;
   const statusChanged=isDirectApply&&ns!==curStatus;
+  // v22 Track A-5: 메타 필드 변경 감지 (direct_apply 모드만)
+  const titleChanged=isDirectApply&&nTitle.trim()!==curTitle;
+  const notesChanged=isDirectApply&&nNotes!==curNotes;
+  const jiraUrlChanged=isDirectApply&&nJiraUrl.trim()!==curJiraUrl;
+  const versionIdChanged=isDirectApply&&(nVersionId||"")!==(curVersionId||"");
+  const metaChanged=titleChanged||notesChanged||jiraUrlChanged||versionIdChanged;
+  // 트래커 versions (allTasks 에서 추출)
+  const versionOptions=useMemo(()=>{
+    const s=new Set();(allTasks||[]).forEach(t=>{if(t.version_id)s.add(t.version_id)});
+    return[...s].sort();
+  },[allTasks]);
+  // VERSION_JIRA_MAP 매핑 미리보기 (선택한 version_id 가 매핑 자산에 있는지)
+  const versionJiraInfo=(typeof VERSION_JIRA_MAP!=='undefined'&&nVersionId&&VERSION_JIRA_MAP[nVersionId])||null;
   const submit=async()=>{
     // 일정 입력은 둘 다 있거나 둘 다 없거나 (관리자 모드는 NULL 허용)
     if(isDirectApply){
@@ -4195,7 +4291,13 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
       if(de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
     }
     if(!reason.trim()){setErr((isDirectApply?"조정":"요청")+" 사유 입력 필수");return}
-    if(!dateChanged&&!statusChanged){setErr("일정 또는 상태 중 하나는 변경되어야 합니다");return}
+    if(isDirectApply){
+      if(!dateChanged&&!statusChanged&&!metaChanged){setErr("일정/상태/메타 중 하나는 변경되어야 합니다");return}
+      if(titleChanged&&!nTitle.trim()){setErr("제목은 비울 수 없습니다");return}
+      if(jiraUrlChanged&&nJiraUrl.trim()&&!/^https?:\/\//i.test(nJiraUrl.trim())){setErr("JIRA URL 은 http(s):// 로 시작해야 합니다");return}
+    }else{
+      if(!dateChanged){setErr("일정이 변경되어야 합니다");return}
+    }
     if(!isDirectApply&&!lvl1){setErr("1차 승인자(파트장) 미배정 - 관리자에게 문의");return}
     setSaving(true);setErr(null);
     if(isDirectApply){
@@ -4208,12 +4310,35 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
         if(ds!==curStart)triggerPatch.start_date=ds||null;
         if(de!==curEnd)triggerPatch.end_date=de||null;
         if(statusChanged)triggerPatch.status=ns;
+        // v22 Track A-5: 메타 필드 PATCH
+        if(titleChanged){triggerPatch.title_object=nTitle.trim();triggerPatch.title=nTitle.trim()}
+        if(notesChanged)triggerPatch.notes=nNotes||null;
+        if(jiraUrlChanged)triggerPatch.jira_url=nJiraUrl.trim()||null;
+        if(versionIdChanged)triggerPatch.version_id=nVersionId||null;
         await db.updTask(task.id,triggerPatch);
         if(ds!==curStart){
           await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"start_date",old_value:curStart||"-",new_value:ds||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
         }
         if(de!==curEnd){
           await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"end_date",old_value:curEnd||"-",new_value:de||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
+        }
+        if(statusChanged){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"status",old_value:curStatus||"-",new_value:ns||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        // v22 Track A-5: 메타 필드 이력 (각 필드 별 row)
+        if(titleChanged){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"title",old_value:curTitle||"-",new_value:nTitle.trim()||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        if(notesChanged){
+          const oldNotesShort=(curNotes||"").slice(0,80)+((curNotes||"").length>80?"...":"");
+          const newNotesShort=(nNotes||"").slice(0,80)+((nNotes||"").length>80?"...":"");
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"notes",old_value:oldNotesShort||"-",new_value:newNotesShort||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        if(jiraUrlChanged){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"jira_url",old_value:curJiraUrl||"-",new_value:nJiraUrl.trim()||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        if(versionIdChanged){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"version_id",old_value:curVersionId||"-",new_value:nVersionId||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
         }
         // 2) cascade affected tasks (일정 변경 + delta>0 일 때만, dateChanged 없으면 affected 도 빈 배열)
         let cascadeApplied=0;
@@ -4342,6 +4467,45 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
             <span>JIRA 일정 동기 큐 적재 (update_dates, jira_url 있는 task 만)</span>
           </label>
         </div>}
+        {/* v22 Track A-5: 메타 필드 expand (제목/내용/jira_url/version_id) */}
+        {isDirectApply&&<div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:showMeta?8:0,cursor:"pointer"}} onClick={()=>setShowMeta(!showMeta)}>
+            <span style={{fontWeight:600,color:"var(--t2)"}}>{showMeta?"▼":"▶"} 메타 필드 편집 (제목/내용/JIRA URL/버전)</span>
+            {metaChanged&&<span style={{fontSize:10,padding:"1px 5px",background:"#7c3aed",color:"#fff",borderRadius:2,fontWeight:600}}>변경됨</span>}
+          </div>
+          {showMeta&&<div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div>
+              <div style={{fontSize:10,color:"var(--t3)",marginBottom:3}}>제목 (title_object)</div>
+              <input type="text" value={nTitle} onChange={e=>setNTitle(e.target.value)} placeholder="(빈 값 불가)"
+                style={{width:"100%",padding:"5px 8px",border:"1px solid "+(titleChanged?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:12,fontFamily:"inherit"}}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:10,color:"var(--t3)",marginBottom:3}}>JIRA URL (jira_url)</div>
+                <input type="text" value={nJiraUrl} onChange={e=>setNJiraUrl(e.target.value)} placeholder="https://jira.nmn.io/browse/PROJECTT-..."
+                  style={{width:"100%",padding:"5px 8px",border:"1px solid "+(jiraUrlChanged?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:12,fontFamily:"inherit"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:"var(--t3)",marginBottom:3}}>버전 (version_id, = fixVersion 매핑)</div>
+                <select value={nVersionId} onChange={e=>setNVersionId(e.target.value)}
+                  style={{width:"100%",padding:"5px 8px",border:"1px solid "+(versionIdChanged?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:12,fontFamily:"inherit"}}>
+                  <option value="">(미지정)</option>
+                  {versionOptions.map(v=><option key={v} value={v}>{v}{versionJiraInfo&&v===nVersionId?" ★":""}</option>)}
+                </select>
+              </div>
+            </div>
+            {versionJiraInfo&&<div style={{padding:"4px 8px",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:3,fontSize:10,color:"#5b21b6",lineHeight:1.5}}>
+              ★ {nVersionId} JIRA 매핑: fixVersion={versionJiraInfo.fixVersion} / sprint(active)={versionJiraInfo.sprint} / epic={versionJiraInfo.epic}
+              {versionJiraInfo.label&&" / label="+versionJiraInfo.label}
+            </div>}
+            <div>
+              <div style={{fontSize:10,color:"var(--t3)",marginBottom:3}}>내용 (notes)</div>
+              <textarea value={nNotes} onChange={e=>setNNotes(e.target.value)} placeholder="작업 상세 / 메모 / 컨텍스트"
+                style={{width:"100%",minHeight:48,padding:"5px 8px",border:"1px solid "+(notesChanged?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>
+            </div>
+            <div style={{fontSize:10,color:"var(--t4)",fontStyle:"italic"}}>각 필드는 변경 시 schedule_changes 에 별도 row 발행 (이력 추적). JIRA 측 sprint/fixVersion 동기화는 별도 트랙 (Phase E-2).</div>
+          </div>}
+        </div>}
         {(()=>{
           // done parent 경고: child 일정이 done parent 범위 밖으로 나가는 경우
           if(!task.parent_task_id||!ds||!de)return null;
@@ -4398,7 +4562,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
       </div>
       <div className="modal-f">
         <button className="bt" onClick={onClose} disabled={saving}>취소</button>
-        <button className={"bt "+(isDirectApply?"":"bt-g")} onClick={submit} disabled={saving||!reason.trim()||(!isDirectApply&&!lvl1)||(isDirectApply&&!dateChanged&&!statusChanged)}
+        <button className={"bt "+(isDirectApply?"":"bt-g")} onClick={submit} disabled={saving||!reason.trim()||(!isDirectApply&&!lvl1)||(isDirectApply&&!dateChanged&&!statusChanged&&!metaChanged)}
           style={isDirectApply?{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}:undefined}>
           {saving?(isDirectApply?"적용 중...":"저장 중..."):submitLabel}
         </button>
