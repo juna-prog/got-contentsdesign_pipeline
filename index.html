@@ -3770,6 +3770,7 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const[showDirect,setShowDirect]=useState(false);
   const[showNewSub,setShowNewSub]=useState(false);
   const[showDelete,setShowDelete]=useState(false);
+  const[showConnectJira,setShowConnectJira]=useState(false);
   useEffect(()=>{
     if(!task){setHistory([]);return}
     setHistLoading(true);
@@ -3800,6 +3801,8 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const canAddSub=isAdmin||isMyTask;
   // v22 Track A-3: 삭제 권한 = 관리자만 (본인 owner 도 1차 시안에서는 제외, 이력 보존)
   const canDelete=isAdmin&&!isDone;
+  // v22 Track A-4: 기존 task JIRA 일감 연결 = jira_url 없을 때 + 관리자 또는 본인 owner
+  const canConnectJira=!task.jira_url&&(isAdmin||isMyTask)&&!isDone;
   const STATUS_L={waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"};
   const STATUS_C={waiting:"#6b7280",progress:"#0891b2",done:"#059669",blocked:"#dc2626"};
   const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트"};
@@ -3870,6 +3873,7 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
         {!isDone&&isMyTask&&<button className="bt bt-s" onClick={()=>setShowRequest(true)} style={{background:"#0891b2",color:"#fff",borderColor:"#0891b2"}}>📅 일정 조정 요청</button>}
         {!isDone&&isAdmin&&<button className="bt bt-s" onClick={()=>setShowDirect(true)} style={{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}}>⚡ 직접 조정</button>}
         {canAddSub&&<button className="bt bt-s" onClick={()=>setShowNewSub(true)} style={{background:"#059669",color:"#fff",borderColor:"#059669"}}>+ Sub-Task 추가</button>}
+        {canConnectJira&&<button className="bt bt-s" onClick={()=>setShowConnectJira(true)} title="JIRA 일감 생성 + 연결" style={{background:"#0052cc",color:"#fff",borderColor:"#0052cc"}}>🎫 JIRA 연결</button>}
         {canDelete&&<button className="bt bt-s" onClick={()=>setShowDelete(true)} title="태스크 삭제 (관리자)" style={{background:"#fff",color:"#dc2626",borderColor:"#dc2626"}}>🗑 삭제</button>}
         {isDone&&!canAddSub&&<span style={{fontSize:11,color:"var(--t4)"}}>완료된 태스크는 편집 불가</span>}
         <button className="bt bt-s" onClick={onClose} style={{marginLeft:"auto"}}>닫기</button>
@@ -3887,6 +3891,9 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
     {showDelete&&<DeleteTaskModal task={task} user={user} allTasks={allTasks} zOverride={9999}
       onClose={()=>setShowDelete(false)}
       onDone={(res)=>{setShowDelete(false);const msg="🗑 #"+task.id+" 삭제됨";window.showToast&&window.showToast(msg);onClose();onRefresh&&onRefresh(null)}}/>}
+    {showConnectJira&&<ConnectJiraModal task={task} user={user} workers={workers} contents={contents} parentTask={parent} zOverride={9999}
+      onClose={()=>setShowConnectJira(false)}
+      onDone={(res)=>{setShowConnectJira(false);onRefresh&&onRefresh(task.id);window.showToast&&window.showToast("🎫 JIRA 연결 "+(res?.jiraKey||""))}}/>}
   </>;
 }
 
@@ -4174,6 +4181,102 @@ function DeleteTaskModal({task,user,allTasks,zOverride,onClose,onDone}){
       <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,justifyContent:"flex-end"}}>
         <button className="bt bt-s" onClick={onClose} disabled={saving}>취소</button>
         <button className="bt bt-s" onClick={submit} disabled={saving||!reason.trim()||!ack||hasChildren} style={{background:"#dc2626",color:"#fff",borderColor:"#dc2626"}}>{saving?"삭제 중...":"🗑 삭제 확정"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ═══ CONNECT JIRA MODAL (v22 Track A-4) ═══ */
+/* 기존 task 에 JIRA 일감 연결. 2 step: (1) prefill URL 새 탭 (2) 발급된 JIRA URL/Key paste → jira_url PATCH */
+function ConnectJiraModal({task,user,workers,contents,parentTask,zOverride,onClose,onDone}){
+  const[jiraInput,setJiraInput]=useState("");
+  const[reason,setReason]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState(null);
+  const[opened,setOpened]=useState(false);
+  const assigneeWorker=(workers||[]).find(w=>w.id===task.assignee_id);
+  const content=(contents||[]).find(c=>c.id===task.content_id);
+  const versionInfo=(typeof VERSION_JIRA_MAP!=='undefined'&&task.version_id&&VERSION_JIRA_MAP[task.version_id])||null;
+  // prefill URL 미리 생성 (parentTask 가 없을 때는 task 자신을 parent context 로)
+  const prefillUrl=useMemo(()=>{
+    try{
+      return buildJiraCreateUrl({
+        parentTask:parentTask||task,
+        newTaskTitle:task.title_object||task.title||"",
+        newTaskStart:task.start_date?task.start_date.slice(0,10):null,
+        newTaskEnd:task.end_date?task.end_date.slice(0,10):null,
+        assigneeWorker,
+        versionId:task.version_id||null,
+        actionVerb:task.action_verb||"",
+        reason:"기존 트래커 task 연결",
+        content
+      });
+    }catch(e){return null}
+  },[task,parentTask,assigneeWorker,content]);
+  // JIRA URL/Key normalize: "PROJECTT-NNN" 또는 "https://jira.nmn.io/browse/PROJECTT-NNN" 또는 전체 URL 허용
+  const normalizeJira=v=>{
+    const trimmed=(v||"").trim();
+    if(!trimmed)return null;
+    const keyMatch=trimmed.match(/([A-Z]+-\d+)/);
+    if(!keyMatch)return null;
+    const key=keyMatch[1];
+    const url=trimmed.startsWith("http")?trimmed:("https://jira.nmn.io/browse/"+key);
+    return{key,url};
+  };
+  const parsed=normalizeJira(jiraInput);
+  const submit=async()=>{
+    if(!parsed){setErr("JIRA 키 또는 URL 형식이 아님 (예: PROJECTT-38075)");return}
+    if(!reason.trim()){setErr("연결 사유 입력 필수");return}
+    setSaving(true);setErr(null);
+    try{
+      const reasonText=reason.trim();
+      await db.updTask(task.id,{jira_url:parsed.url,updated_at:new Date().toISOString()});
+      await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"jira_url",old_value:"-",new_value:parsed.key,reason:reasonText+" (외부 JIRA 일감 연결)",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+      onDone&&onDone({jiraKey:parsed.key,jiraUrl:parsed.url});
+      onClose();
+    }catch(e){setErr("연결 실패: "+(e.message||e));setSaving(false)}
+  };
+  return<div className="modal-bg" onClick={onClose} style={zOverride?{zIndex:zOverride}:undefined}>
+    <div className="modal" style={{maxWidth:560,width:"94vw"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{background:"#0052cc",color:"#fff"}}>🎫 JIRA 일감 연결 - #{task.id} {task.title_object||task.title}</div>
+      <div className="modal-b" style={{maxHeight:"70vh",overflow:"auto"}}>
+        <div style={{padding:"8px 12px",background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:6,fontSize:11,color:"#1e40af",marginBottom:12,lineHeight:1.6}}>
+          🎫 <b>2 step 흐름</b>: (1) prefill URL 새 탭 → JIRA 측에서 일감 생성 → 발급된 JIRA 키(PROJECTT-NNN) 또는 URL 을 (2) 아래 input 에 paste → 적용 시 task.jira_url 에 자동 연결.
+          <br/><span style={{color:"#7c2d12"}}>※ JIRA Server 한계로 issuetype 선택 페이지까지만 prefill 됨. summary/description 등은 사용자가 수동 입력 필요.</span>
+        </div>
+        <div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)",lineHeight:1.6}}>
+          <div style={{fontWeight:600,marginBottom:4,color:"var(--t2)"}}>연결 대상 task 정보 (prefill 자동 반영)</div>
+          <div>제목: <span style={{fontWeight:600}}>{task.title_object||task.title||"-"}</span></div>
+          <div>일정: {task.start_date?task.start_date.slice(0,10):"-"} ~ {task.end_date?task.end_date.slice(0,10):"-"}</div>
+          <div>담당자: {assigneeWorker?.name||"-"} {assigneeWorker&&typeof WORKER_JIRA_MAP!=='undefined'&&WORKER_JIRA_MAP[assigneeWorker.name]?<span style={{color:"var(--ac)"}}>→ JIRA {WORKER_JIRA_MAP[assigneeWorker.name]}</span>:""}</div>
+          {task.version_id&&<div>버전: {task.version_id} {versionInfo?<span style={{color:"var(--ac)"}}>→ fixVersion {versionInfo.fixVersion} / sprint {versionInfo.sprint}</span>:<span style={{color:"#92400e"}}>(JIRA 매핑 미정)</span>}</div>}
+          {parentTask&&<div>부모: #{parentTask.id} {parentTask.title_object||parentTask.title}</div>}
+        </div>
+        <div style={{marginBottom:12}}>
+          <button className="bt bt-s" onClick={()=>{if(prefillUrl){window.open(prefillUrl,"_blank","noopener");setOpened(true)}}} disabled={!prefillUrl} style={{background:"#0052cc",color:"#fff",borderColor:"#0052cc",width:"100%",padding:"8px 0",fontSize:13,fontWeight:600}}>
+            {opened?"↗ JIRA 페이지 다시 열기":"↗ Step 1: JIRA 일감 생성 페이지 새 탭 열기"}
+          </button>
+          {opened&&<div style={{marginTop:6,padding:"6px 10px",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:4,fontSize:11,color:"#065f46"}}>
+            ✓ 새 탭 열림. JIRA 측에서 일감 생성 후, 발급된 키(예: PROJECTT-38075) 또는 URL 을 아래에 paste 하세요.
+          </div>}
+        </div>
+        <div style={{borderTop:"1px dashed var(--bd)",margin:"12px 0",paddingTop:12}}>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:6,fontWeight:600}}>Step 2: 발급된 JIRA 키 또는 URL <span style={{color:"var(--rd)"}}>*</span></div>
+          <input type="text" autoFocus value={jiraInput} onChange={e=>setJiraInput(e.target.value)} placeholder="PROJECTT-38075  또는  https://jira.nmn.io/browse/PROJECTT-38075"
+            style={{width:"100%",padding:"7px 10px",border:"1px solid "+(parsed?"#059669":jiraInput?"#dc2626":"var(--bd)"),borderRadius:4,fontSize:13,fontFamily:"inherit",marginBottom:6}}/>
+          {parsed&&<div style={{fontSize:11,color:"#059669"}}>✓ {parsed.key} - {parsed.url}</div>}
+          {jiraInput&&!parsed&&<div style={{fontSize:11,color:"#dc2626"}}>⚠ 형식 오류 - PROJECTT-숫자 패턴 필요</div>}
+        </div>
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>연결 사유 <span style={{color:"var(--rd)"}}>*</span></div>
+          <input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="예: ALUP01 1차 발행 누락분 / 외부 생성 일감 연결"
+            style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:12,fontFamily:"inherit"}}/>
+        </div>
+        {err&&<div style={{padding:"6px 10px",background:"var(--rd-bg)",color:"var(--rd)",borderRadius:4,fontSize:12}}>{err}</div>}
+      </div>
+      <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="bt bt-s" onClick={onClose} disabled={saving}>취소</button>
+        <button className="bt bt-s" onClick={submit} disabled={saving||!parsed||!reason.trim()} style={{background:"#0052cc",color:"#fff",borderColor:"#0052cc"}}>{saving?"연결 중...":"🎫 연결 적용"}</button>
       </div>
     </div>
   </div>;
