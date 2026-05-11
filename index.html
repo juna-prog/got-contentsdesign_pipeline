@@ -8,7 +8,7 @@
 :root{--bg:#fff;--bg2:#f8f9fb;--bg3:#f1f3f5;--bd:#e5e7eb;--bd2:#d1d5db;--t1:#111827;--t2:#374151;--t3:#6b7280;--t4:#9ca3af;--ac:#2563eb;--ac-bg:#eff6ff;--gn:#059669;--gn-bg:#ecfdf5;--rd:#dc2626;--rd-bg:#fef2f2;--or:#d97706;--or-bg:#fffbeb;--pu:#7c3aed;--pu-bg:#f5f3ff;--r:8px;--sh:0 1px 3px rgba(0,0,0,.06);--sh2:0 4px 12px rgba(0,0,0,.08)}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Pretendard',-apple-system,sans-serif;background:var(--bg2);color:var(--t1);line-height:1.5;overflow:hidden;height:100vh}
 ::-webkit-scrollbar{height:8px;width:8px}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:var(--t4)}
-.app{display:flex;flex-direction:column;height:100vh;max-width:1440px;margin:0 auto;padding:16px 24px 12px}
+.app{display:flex;flex-direction:column;height:100vh;max-width:none;margin:0 auto;padding:16px 56px 12px}
 .b{display:inline-flex;align-items:center;font-size:12px;padding:3px 10px;border-radius:6px;font-weight:600;white-space:nowrap}
 .b-r{background:var(--rd-bg);color:var(--rd)}.b-o{background:var(--or-bg);color:var(--or)}.b-g{background:var(--gn-bg);color:var(--gn)}.b-p{background:var(--pu-bg);color:var(--pu)}.b-a{background:var(--ac-bg);color:var(--ac)}.b-x{background:var(--bg3);color:var(--t3)}
 .bt{padding:7px 16px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;border:1px solid var(--bd);background:var(--bg);color:var(--t2);transition:all .15s;font-family:inherit}.bt:hover{background:var(--bg3)}.bt.on{background:var(--ac-bg);border-color:var(--ac);color:var(--ac)}
@@ -241,9 +241,12 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
   // dragCommit = {task, mode, newStart, newEnd} → ScheduleRequestModal 호출 트리거
   const[dragCommit,setDragCommit]=useState(null);
   const chartRef=useRef(null);const ganttWrapRef=useRef(null);const namesRef=useRef(null);const ganttDrag=useRef(null);
-  // Right-click drag scroll for gantt chart
+  // Right-click drag scroll for gantt chart (v22 Track 8: task 막대 위에서는 비활성)
   useEffect(()=>{const el=chartRef.current;if(!el)return;
-    const onDown=e=>{if(e.button!==0)return;e.preventDefault();ganttDrag.current={x:e.clientX,y:e.clientY,sl:el.scrollLeft,st:el.scrollTop};el.style.cursor="grabbing"};
+    const onDown=e=>{if(e.button!==0)return;
+      // task 막대 위 클릭 → 막대 드래그 우선, 화면 스크롤 드래그 비활성
+      if(e.target&&e.target.closest&&e.target.closest('.gantt-bar'))return;
+      e.preventDefault();ganttDrag.current={x:e.clientX,y:e.clientY,sl:el.scrollLeft,st:el.scrollTop};el.style.cursor="grabbing"};
     const onMove=e=>{if(!ganttDrag.current)return;el.scrollLeft=ganttDrag.current.sl-(e.clientX-ganttDrag.current.x);el.scrollTop=ganttDrag.current.st-(e.clientY-ganttDrag.current.y)};
     const onUp=()=>{if(ganttDrag.current){ganttDrag.current=null;el.style.cursor=""}};
     el.addEventListener("mousedown",onDown);window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
@@ -615,6 +618,15 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 <span style={{fontSize:7,color:isHol||isWE?"var(--rd)":"var(--t4)"}}>{DOW[d.getDay()]}</span>
               </div>})}
           </div>
+          {/* v22 Track 8: Marker labels row (sticky) - TODAY + milestones */}
+          <div style={{position:"relative",height:22,borderBottom:"1px solid var(--bd)",background:"var(--bg)",width:totalWidth}}>
+            {(milestones||[]).map(ms=>{
+              const x=dateToX(ms.date);if(x===null||x<0||x>totalWidth)return null;
+              const tc=MC[ms.type]||"var(--t4)";
+              return<div key={"lbl"+ms.id} style={{position:"absolute",left:Math.max(2,x+4),top:3,fontSize:10,fontWeight:700,color:tc,whiteSpace:"nowrap",background:"rgba(255,255,255,.92)",padding:"1px 5px",borderRadius:3,border:"1px solid "+tc,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}} title={ms.label}>{ms.label}</div>;
+            })}
+            {todayX!==null&&todayX>0&&todayX<totalWidth&&<div style={{position:"absolute",left:Math.max(2,todayX-2),top:3,fontSize:10,fontWeight:700,color:"var(--rd)",background:"rgba(255,255,255,.95)",padding:"1px 6px",borderRadius:3,border:"1px solid var(--rd)"}}>TODAY</div>}
+          </div>
         </div>
 
         {/* Rows */}
@@ -629,19 +641,15 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
               return<div key={country+h.d} style={{position:"absolute",left:x,top:0,height:rows.length*rowH,width:1,background:HOL_COLORS[country],opacity:.2,zIndex:0}} title={h.n+" ("+HOL_LABELS[country]+")"}/>
             }))}
 
-          {/* Milestone lines */}
+          {/* Milestone lines (라벨은 상단 sticky 행으로 이동) */}
           {(milestones||[]).map(ms=>{
             const x=dateToX(ms.date);if(x===null||x<0||x>totalWidth)return null;
             const tc=MC[ms.type]||"var(--t4)";
-            return<div key={ms.id} style={{position:"absolute",left:x,top:0,height:rows.length*rowH,width:2,background:tc,opacity:.4,zIndex:1}}>
-              <div style={{position:"absolute",top:-2,left:4,fontSize:9,fontWeight:600,color:tc,whiteSpace:"nowrap",background:"rgba(255,255,255,.8)",padding:"0 3px",borderRadius:2}}>{ms.label}</div>
-            </div>
+            return<div key={ms.id} style={{position:"absolute",left:x,top:0,height:rows.length*rowH,width:2,background:tc,opacity:.4,zIndex:1}} title={ms.label}/>
           })}
 
-          {/* Today line */}
-          {todayX!==null&&todayX>0&&<div style={{position:"absolute",left:todayX,top:0,height:rows.length*rowH,width:2,background:"var(--rd)",zIndex:2}}>
-            <div style={{position:"absolute",top:-2,left:4,fontSize:9,fontWeight:700,color:"var(--rd)",background:"rgba(255,255,255,.9)",padding:"0 4px",borderRadius:2}}>TODAY</div>
-          </div>}
+          {/* Today line (라벨은 상단 sticky 행) */}
+          {todayX!==null&&todayX>0&&<div style={{position:"absolute",left:todayX,top:0,height:rows.length*rowH,width:2,background:"var(--rd)",zIndex:2}} title="TODAY"/>}
 
           {/* Task bars */}
           {rows.map((r,ri)=>{
@@ -5565,8 +5573,8 @@ function App(){
     {/* Notice */}
     {!ld&&<NoticeBar changes={changes} user={user} onJump={handleJump} onOpenAdmin={()=>setAdminPanel(true)} allTasks={allT} onTaskClick={openTaskPanel}/>}
 
-    {/* Milestone Timeline */}
-    {!ld&&ms.length>0&&<MilestoneTimeline milestones={ms} versions={vr}/>}
+    {/* Milestone Timeline (간트 탭 = 자체 sticky 마커로 대체, 화면 절약) */}
+    {!ld&&ms.length>0&&view!=="gantt"&&<MilestoneTimeline milestones={ms} versions={vr}/>}
 
     {/* Nav */}
     <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
