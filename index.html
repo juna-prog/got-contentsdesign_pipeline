@@ -86,7 +86,7 @@ const supabaseClient=window.supabase.createClient(SU,SK,{auth:{persistSession:tr
 let currentSession=null;
 const FH=()=>({"apikey":SK,"Authorization":"Bearer "+(currentSession?.access_token||SK),"Content-Type":"application/json"});
 async function q(p,o={}){const r=await fetch(SU+"/rest/v1/"+p,{...o,headers:{...FH(),Prefer:o.method==="POST"?"return=representation":undefined,...(o.headers||{})}});if(!r.ok){const eb=await r.text().catch(()=>'');throw new Error(r.status+(eb?': '+eb.slice(0,300):''))}const t=await r.text();return t?JSON.parse(t):null}
-const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),jiraQueueStatus:()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at,contents(name,type),tasks(title,title_object)&order=created_at.desc&limit=80").catch(()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at&order=created_at.desc&limit=80").catch(()=>[])),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),scheduleRequests:()=>q("schedule_change_requests?select=*,tasks(id,title,title_object,start_date,end_date,assignee_id,workers(id,name,part_id)),requester:requester_id(id,name,part_id),lvl1_approver:lvl1_approver_id(id,name),lvl2_approver:lvl2_approver_id(id,name)&order=created_at.desc&limit=200").catch(()=>q("schedule_change_requests?select=*&order=created_at.desc&limit=200").catch(()=>[])),scheduleRequestsByMe:wid=>q("schedule_change_requests?requester_id=eq."+wid+"&select=*&order=created_at.desc").catch(()=>[]),scheduleRequestsForApproval:wid=>q("schedule_change_requests?or=(lvl1_approver_id.eq."+wid+",lvl2_approver_id.eq."+wid+")&status=in.(pending,lvl1_approved)&select=*,tasks(title,title_object),requester:requester_id(name,part_id)&order=created_at.desc").catch(()=>[]),addScheduleRequest:d=>q("schedule_change_requests",{method:"POST",body:JSON.stringify(d)}),updScheduleRequest:(i,d)=>q("schedule_change_requests?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),delScheduleRequest:i=>q("schedule_change_requests?id=eq."+i,{method:"DELETE"})};
+const db={versions:()=>q("versions?select=*&order=sort_order"),contents:()=>q("contents?select=*&order=priority"),tasks:c=>q(c?"tasks?content_id=eq."+c+"&select=*&order=sort_order":"tasks?select=*&order=sort_order"),allTasks:()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id),task_assignees(worker_id,role,workers(id,name,part_id))&order=start_date").then(ts=>(ts||[]).map(t=>({...t,task_assignees:(t.task_assignees||[])}))).catch(()=>q("tasks?select=*,contents(name,type,version_id,gate,category),workers(name,part_id)&order=start_date")),workers:()=>q("workers?select=*&order=part_id,name"),workersByEmail:e=>q("workers?email=eq."+encodeURIComponent(e)+"&select=*"),insWorker:d=>q("workers",{method:"POST",body:JSON.stringify(d)}),updWorker:(i,d)=>q("workers?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),addAudit:d=>q("audit_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),auditLog:(qs)=>q("audit_log?select=*&order=created_at.desc&limit=200"+(qs||"")).catch(()=>[]),milestones:()=>q("milestones?select=*&order=date"),parts:()=>q("parts?select=*&order=sort_order"),addContent:d=>q("contents",{method:"POST",body:JSON.stringify(d)}),updContent:(i,d)=>q("contents?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),updTask:(i,d)=>q("tasks?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),logGate:d=>q("gate_transitions",{method:"POST",body:JSON.stringify(d)}),recentChanges:()=>q("schedule_changes?select=*,contents(name,owner)&order=created_at.desc&limit=20").catch(()=>[]),contentChanges:c=>q("schedule_changes?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),taskChanges:t=>q("schedule_changes?task_id=eq."+t+"&select=*&order=created_at.desc").catch(()=>[]),contentGateLog:c=>q("gate_transitions?content_id=eq."+c+"&select=*&order=created_at.desc").catch(()=>[]),addChange:d=>q("schedule_changes",{method:"POST",body:JSON.stringify(d)}),contentsBySrc:p=>q("contents?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),tasksBySrc:p=>q("tasks?source_key=like."+encodeURIComponent(p+"%")+"&select=*").catch(()=>[]),bulkContents:a=>q("contents",{method:"POST",body:JSON.stringify(a)}),bulkTasks:a=>q("tasks",{method:"POST",body:JSON.stringify(a)}),addImportRun:d=>q("import_runs",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),delTaskAssignees:tid=>q("task_assignees?task_id=eq."+tid,{method:"DELETE"}).catch(()=>null),bulkTaskAssignees:a=>q("task_assignees",{method:"POST",body:JSON.stringify(a)}).catch(()=>null),jiraTemplates:()=>q("jira_templates?select=*&order=template_key").catch(()=>[]),updJiraTemplate:(i,d)=>q("jira_templates?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),workTypes:()=>q("work_types?select=*&is_active=eq.true&order=sort_order").catch(()=>[]),sprintConfigs:()=>q("sprint_config?select=*&is_active=eq.true").catch(()=>[]),addJiraLog:d=>q("jira_creation_log",{method:"POST",body:JSON.stringify(d)}).catch(()=>null),updJiraLog:(i,d)=>q("jira_creation_log?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}).catch(()=>null),jiraPending:()=>q("jira_creation_log?status=eq.pending&select=id,task_id,content_id,operation_type,created_at").catch(()=>[]),jiraQueueStatus:()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at,contents(name,type),tasks(title,title_object)&order=created_at.desc&limit=80").catch(()=>q("jira_creation_log?select=id,status,operation_type,content_id,task_id,target_epic_key,result_key,result_url,executed_at,executed_by,error_message,created_at&order=created_at.desc&limit=80").catch(()=>[])),deps:()=>q("task_dependencies?select=*").catch(()=>[]),depViolations:()=>q("v_dep_date_violations?select=*").catch(()=>[]),addDep:d=>q("task_dependencies",{method:"POST",body:JSON.stringify(d)}).catch(e=>{throw e}),delDep:i=>q("task_dependencies?id=eq."+i,{method:"DELETE"}).catch(e=>{throw e}),templates:()=>q("task_templates?select=*&order=part_id").catch(()=>[]),delContent:i=>q("contents?id=eq."+i,{method:"DELETE"}),delJiraLogsByContent:i=>q("jira_creation_log?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),delGateLogsByContent:i=>q("gate_transitions?content_id=eq."+i,{method:"DELETE"}).catch(()=>null),scheduleRequests:()=>q("schedule_change_requests?select=*,tasks(id,title,title_object,start_date,end_date,assignee_id,workers(id,name,part_id)),requester:requester_id(id,name,part_id),lvl1_approver:lvl1_approver_id(id,name),lvl2_approver:lvl2_approver_id(id,name)&order=created_at.desc&limit=200").catch(()=>q("schedule_change_requests?select=*&order=created_at.desc&limit=200").catch(()=>[])),scheduleRequestsByMe:wid=>q("schedule_change_requests?requester_id=eq."+wid+"&select=*&order=created_at.desc").catch(()=>[]),scheduleRequestsForApproval:wid=>q("schedule_change_requests?or=(lvl1_approver_id.eq."+wid+",lvl2_approver_id.eq."+wid+")&status=in.(pending,lvl1_approved)&select=*,tasks(title,title_object),requester:requester_id(name,part_id)&order=created_at.desc").catch(()=>[]),addScheduleRequest:d=>q("schedule_change_requests",{method:"POST",body:JSON.stringify(d)}),updScheduleRequest:(i,d)=>q("schedule_change_requests?id=eq."+i,{method:"PATCH",body:JSON.stringify(d)}),delScheduleRequest:i=>q("schedule_change_requests?id=eq."+i,{method:"DELETE"})};
 
 // G0~G7 정식 게이트 (2026-04-08 파트장 회의 합의)
 const GATES=[
@@ -222,7 +222,7 @@ TH:[{d:"2026-01-01",n:"New Year"},{d:"2026-02-17",n:"Makha Bucha"},{d:"2026-04-0
 const HOL_COLORS={KR:"#dc2626",US:"#2563eb",JP:"#db2777",TW:"#059669",HK:"#d97706",IN:"#7c3aed",TH:"#0284c7"};
 const HOL_LABELS={KR:"한국",US:"서양",JP:"일본",TW:"대만",HK:"홍콩",IN:"인도",TH:"태국"};
 
-function GanttView({tasks,workers,milestones,parts,contents,versions,dependencies,depViolations,onDepRefresh}){
+function GanttView({tasks,workers,milestones,parts,contents,versions,dependencies,depViolations,onDepRefresh,onTaskClick}){
   const[teamFilter,setTF]=useState("all");
   const[partFilter,setPF]=useState("all");
   const[verFilter,setVerF]=useState("all");
@@ -499,7 +499,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
           </div>:r.type==="task"?
           (()=>{const blk=blockingByTask[r.task.id];const vio=violationByTask[r.task.id];
           const disp=formatTaskDisplay(r.task,r.task.contents,{withName:true});
-          return<div key={r._key} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)"}} title={disp}>
+          return<div key={r._key} className="gantt-name" style={{paddingLeft:28,fontSize:11,color:"var(--t3)",cursor:onTaskClick?"pointer":"default"}} title={disp+" (클릭: 상세 패널)"} onClick={()=>onTaskClick&&onTaskClick(r.task.id)}>
             <D s={r.task.status}/><span style={{marginLeft:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{disp}</span>
             {blk&&<span title={"선행 미완료 "+blk.length+"건: "+blk.map(b=>b.pred_title).slice(0,3).join(', ')} style={{marginLeft:4,fontSize:10,color:"var(--rd)",fontWeight:700,flexShrink:0}}>⚠{blk.length}</span>}
             {vio&&<span title={"날짜 위반 "+vio.length+"건 (선행 종료보다 시작이 빠름)"} style={{marginLeft:2,fontSize:10,flexShrink:0}}>📅</span>}
@@ -693,7 +693,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
 }
 
 /* ═══ TASK SHEET ═══ */
-function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations,onRefresh,user}){
+function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,dependencies,depViolations,onRefresh,user,onTaskClick}){
   const teamTab=filters?.tsTeam||"all";const setTT=v=>onFilterChange?.("tsTeam",v);
   const partFilter=filters?.tsPart||"all";const setPF=v=>onFilterChange?.("tsPart",v);
   const statusFilter=filters?.tsStatus||"all";const setSF=v=>onFilterChange?.("tsStatus",v);
@@ -890,7 +890,7 @@ function TaskSheet({tasks,workers,contents,versions,filters,onFilterChange,depen
           const isExp=!!taskExpanded[t.id];
           const renderRow=(tt,isChild)=>{
             const ctm=TM[tt.contentType]||{};
-            return<div key={tt.id} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 90px 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12,background:isChild?"var(--bg2)":undefined,paddingLeft:isChild?24:12}}>
+            return<div key={tt.id} onClick={e=>{if(e.target.closest('select,button,a,input,.exp-btn'))return;onTaskClick&&onTaskClick(tt.id)}} style={{display:"grid",gridTemplateColumns:"32px 70px 64px 120px 1fr 90px 80px 80px 50px 72px",gap:4,padding:"6px 12px",borderBottom:"1px solid var(--bg3)",alignItems:"center",fontSize:12,background:isChild?"var(--bg2)":undefined,paddingLeft:isChild?24:12,cursor:onTaskClick?"pointer":"default"}}>
               <span style={{color:"var(--t4)",display:"flex",alignItems:"center",gap:2}}>{!isChild&&hasChildren?<button onClick={(e)=>{e.stopPropagation();setTE(p=>({...p,[t.id]:!p[t.id]}))}} style={{background:"none",border:"none",fontSize:10,cursor:"pointer",color:"var(--t3)",padding:0}}>{isExp?"▼":"▶"}</button>:isChild?<span style={{color:"var(--t4)"}}>└</span>:null}{isChild?"":i+1}{!isChild&&hasChildren?<span style={{fontSize:9,color:"var(--ac)",marginLeft:2}}>+{(t._children||[]).length}</span>:null}</span>
               <span style={{color:"var(--t3)",fontSize:11}}>{tt.part}</span>
               <span style={{color:"var(--t2)",fontSize:11}} title={tt.assigneeTooltip||tt.workerName}>{tt.assigneeDisplay||tt.workerName}</span>
@@ -2336,7 +2336,7 @@ function SignInScreen(){
 }
 
 /* ═══ ADMIN PANEL (팀장 전용) - 4 tabs ═══ */
-function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,onOpenImport,onOpenJira,onExportCSV,onRefresh}){
+function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,onOpenImport,onOpenJira,onExportCSV,onRefresh,onTaskClick}){
   // 5/8 권한 확장: part_lead 도 모든 탭 진입 가능 (사용자/활동로그/quick action/JIRA 큐/일정 조정/확장)
   const[tab,setTab]=useState("members");
   const[workers,setWorkers]=useState(initialWorkers||[]);
@@ -2494,6 +2494,7 @@ function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,o
         <button className={tab==="actions"?"on":""} onClick={()=>setTab("actions")}>⚡ Quick Actions</button>
         <button className={tab==="jira"?"on":""} onClick={()=>setTab("jira")}>🎫 JIRA 큐</button>
         <button className={tab==="schedule"?"on":""} onClick={()=>setTab("schedule")}>📅 일정 조정 요청</button>
+        <button className={tab==="pending"?"on":""} onClick={()=>setTab("pending")}>⚠️ 일정 미정</button>
         <button className={tab==="ext"?"on":""} onClick={()=>setTab("ext")}>🔌 확장 (Phase 2~)</button>
       </div>
       <div style={{flex:1,overflow:"auto",padding:14}}>
@@ -2933,7 +2934,78 @@ function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,o
         })()}
       </div>}
 
-      {/* ━━ Tab 5: 확장 슬롯 ━━ */}
+      {/* ━━ Tab 6: 일정 미정 (v22 Track 7) ━━ */}
+      {tab==="pending"&&(()=>{
+        const det=detectPendingScheduleTasks(allTasks);
+        const wMap={};(workers||[]).forEach(w=>{wMap[w.id]=w});
+        const taskMap={};(allTasks||[]).forEach(t=>{taskMap[t.id]=t});
+        const totalCount=det.nullSched.length+det.holidayOnly.length+det.gapAfter.length+det.placeholderGroup.length;
+        const TaskRow=({t,extra})=>{
+          const w=wMap[t.assignee_id];
+          return<div onClick={()=>onTaskClick&&onTaskClick(t.id)} style={{padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:11,cursor:onTaskClick?"pointer":"default",display:"flex",gap:6,alignItems:"center",background:"var(--bg)"}}>
+            <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title_object||t.title}>#{t.id} {t.title_object||t.title}</span>
+            <span style={{color:"var(--t4)",fontSize:10,minWidth:60}}>{w?.name||"미배정"}</span>
+            <span style={{color:"var(--t4)",fontSize:10,minWidth:140,textAlign:"right"}}>{t.start_date||"NULL"} ~ {t.end_date||"NULL"}</span>
+            {extra&&<span style={{color:"var(--rd)",fontSize:10,fontWeight:600}}>{extra}</span>}
+          </div>;
+        };
+        return<div style={{padding:14,display:"flex",flexDirection:"column",gap:14,height:"100%",overflow:"auto"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:14,fontWeight:700,color:"var(--t1)"}}>⚠️ 일정 미정 작업 총 {totalCount}건</span>
+            <span style={{fontSize:11,color:"var(--t3)"}}>(A=NULL · B=공휴일/주말 · C=인접 5+영업일 공백 · D=동일 parent 동일 일정 3+)</span>
+            <button className="bt bt-s" onClick={onRefresh} style={{marginLeft:"auto"}}>↻ 새로고침</button>
+          </div>
+          {/* A. NULL */}
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--rd)",marginBottom:6}}>A. NULL 일정 ({det.nullSched.length}건)</div>
+            {det.nullSched.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {det.nullSched.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
+              {det.nullSched.length>50&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.nullSched.length-50}건</div>}
+            </div>}
+          </div>
+          {/* B. 공휴일/주말-only */}
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>B. 공휴일/주말 단일 ({det.holidayOnly.length}건)</div>
+            {det.holidayOnly.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {det.holidayOnly.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
+            </div>}
+          </div>
+          {/* C. 인접 공백 5+ 영업일 */}
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>C. 동일 워커 인접 task 공백 ≥ 5 영업일 ({det.gapAfter.length}건)</div>
+            {det.gapAfter.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {det.gapAfter.slice(0,30).map(({task,prev,gap})=><TaskRow key={"g"+task.id} t={task} extra={"전 task #"+prev.id+" 종료 후 "+gap+"영업일 공백"}/>)}
+              {det.gapAfter.length>30&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.gapAfter.length-30}건</div>}
+            </div>}
+          </div>
+          {/* D. 동일 parent 동일 일정 3+ */}
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#7c3aed",marginBottom:6}}>D. placeholder 묶음 (동일 parent + 동일 일정 ≥ 3 child) ({det.placeholderGroup.length}그룹)</div>
+            {det.placeholderGroup.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {det.placeholderGroup.map(g=>{
+                const parent=taskMap[g.parent_id];
+                return<div key={g.parent_id+g.start+g.end} style={{padding:8,border:"1px solid #ede9fe",borderRadius:4,background:"#faf5ff"}}>
+                  <div style={{fontSize:11,fontWeight:600,color:"#5b21b6",marginBottom:4}}>
+                    부모 #{g.parent_id} {parent?.title_object||parent?.title||"(unknown)"} - 동일 일정 {g.start} ~ {g.end} child {g.tasks.length}건
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    {g.tasks.map(t=><TaskRow key={t.id} t={t}/>)}
+                  </div>
+                </div>;
+              })}
+            </div>}
+          </div>
+          <div style={{fontSize:10,color:"var(--t4)",fontStyle:"italic",borderTop:"1px solid var(--bd)",paddingTop:8}}>
+            클릭 시 우측 상세 패널이 열립니다. 패널의 ⚡/📅 버튼으로 일정 입력/조정 가능.
+          </div>
+        </div>;
+      })()}
+
+      {/* ━━ Tab 7: 확장 슬롯 ━━ */}
       {tab==="ext"&&<div style={{padding:30,textAlign:"center"}}>
         <div style={{fontSize:14,color:"var(--t2)",marginBottom:16,fontWeight:700}}>🔌 확장 슬롯 (Phase 2~)</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,maxWidth:900,margin:"0 auto"}}>
@@ -3688,6 +3760,167 @@ function ReasonModal({title,oldVal,newVal,onSave,onClose}){
   </div>
 }
 
+/* ═══ TASK DETAIL PANEL (v22 Track 6: 우측 화면분할, JIRA Issue Drawer 스타일) ═══ */
+/* GanttView / TaskSheet task 클릭 시 우측 패널 열림. URL hash #task=N 동기. */
+function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefresh}){
+  const task=useMemo(()=>(allTasks||[]).find(t=>t.id===taskId),[allTasks,taskId]);
+  const[history,setHistory]=useState([]);
+  const[histLoading,setHistLoading]=useState(false);
+  const[showRequest,setShowRequest]=useState(false);
+  const[showDirect,setShowDirect]=useState(false);
+  useEffect(()=>{
+    if(!task){setHistory([]);return}
+    setHistLoading(true);
+    db.taskChanges(task.id).then(r=>{setHistory(r||[]);setHistLoading(false)}).catch(()=>{setHistory([]);setHistLoading(false)});
+  },[task?.id]);
+  useEffect(()=>{
+    const onKey=e=>{if(e.key==="Escape")onClose()};
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[onClose]);
+  if(!task)return<div style={{position:"fixed",top:0,right:0,width:420,height:"100vh",background:"#fff",borderLeft:"1px solid var(--bd)",boxShadow:"-4px 0 12px rgba(0,0,0,.08)",zIndex:8000,padding:20,fontSize:13,color:"var(--t3)",display:"flex",flexDirection:"column"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <span style={{fontWeight:700}}>태스크 상세</span>
+      <button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"var(--t3)"}}>✕</button>
+    </div>
+    태스크 #{taskId} 를 찾을 수 없음.
+  </div>;
+  const wMap={};(workers||[]).forEach(w=>wMap[w.id]=w);
+  const cMap={};(contents||[]).forEach(c=>cMap[c.id]=c);
+  const assignee=wMap[task.assignee_id]||{name:task.workers?.name||"미배정"};
+  const content=cMap[task.content_id]||task.contents||{};
+  const parent=task.parent_task_id?(allTasks||[]).find(t=>t.id===task.parent_task_id):null;
+  const subTasks=(allTasks||[]).filter(t=>t.parent_task_id===task.id);
+  const isMyTask=user&&task.assignee_id===user.id;
+  const isAdmin=user&&(user.is_team_lead||user.is_lead);
+  const isDone=task.status==='done';
+  const STATUS_L={waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"};
+  const STATUS_C={waiting:"#6b7280",progress:"#0891b2",done:"#059669",blocked:"#dc2626"};
+  const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트"};
+  const jiraKey=(()=>{const m=String(task.jira_url||'').match(/([A-Z]+-\d+)/);return m?m[1]:null})();
+  return<>
+    {/* Backdrop (clickable to close, dimmed) */}
+    <div onClick={onClose} style={{position:"fixed",top:0,left:0,right:420,bottom:0,background:"rgba(0,0,0,.18)",zIndex:7999}}/>
+    {/* Right panel */}
+    <div style={{position:"fixed",top:0,right:0,width:420,height:"100vh",background:"#fff",borderLeft:"1px solid var(--bd)",boxShadow:"-4px 0 12px rgba(0,0,0,.12)",zIndex:8000,display:"flex",flexDirection:"column",fontSize:13}}>
+      {/* Header */}
+      <div style={{padding:"12px 14px",borderBottom:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:11,color:"var(--t4)",fontWeight:600}}>#{task.id}</span>
+        <span style={{flex:1,fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={task.title_object||task.title}>{task.title_object||task.title||"(제목 없음)"}</span>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"var(--t3)",padding:"0 4px"}}>✕</button>
+      </div>
+      {/* Body (scroll) */}
+      <div style={{flex:1,overflow:"auto",padding:"12px 14px"}}>
+        {/* Meta grid */}
+        <div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:"6px 10px",marginBottom:12,fontSize:12}}>
+          <div style={{color:"var(--t4)"}}>상태</div>
+          <div><span style={{padding:"2px 8px",borderRadius:3,background:STATUS_C[task.status]+"22",color:STATUS_C[task.status],fontWeight:600,fontSize:11}}>{STATUS_L[task.status]||task.status}</span></div>
+          <div style={{color:"var(--t4)"}}>담당자</div>
+          <div style={{fontWeight:600}}>{assignee.name}</div>
+          <div style={{color:"var(--t4)"}}>일정</div>
+          <div>{task.start_date?task.start_date.slice(0,10):<span style={{color:"var(--rd)",fontWeight:600}}>(미정)</span>} ~ {task.end_date?task.end_date.slice(0,10):<span style={{color:"var(--rd)",fontWeight:600}}>(미정)</span>}</div>
+          {task.days&&<><div style={{color:"var(--t4)"}}>소요일</div><div>{task.days}일</div></>}
+          <div style={{color:"var(--t4)"}}>콘텐츠</div>
+          <div>{content.name||"-"} <span style={{color:"var(--t4)",fontSize:11}}>· #{task.content_id}</span></div>
+          {parent&&<><div style={{color:"var(--t4)"}}>부모</div>
+            <div><a onClick={e=>{e.preventDefault();onRefresh&&onRefresh(parent.id)}} style={{color:"var(--ac)",cursor:"pointer",textDecoration:"underline"}}>#{parent.id} {parent.title_object||parent.title}</a> {parent.status==='done'&&<span style={{marginLeft:4,fontSize:10,padding:"1px 5px",background:"#fef2f2",color:"#991b1b",borderRadius:2,fontWeight:600}}>done</span>}</div></>}
+          {jiraKey&&<><div style={{color:"var(--t4)"}}>JIRA</div>
+            <div><a href={task.jira_url} target="_blank" rel="noopener" style={{color:"var(--ac)",textDecoration:"underline"}}>{jiraKey}</a></div></>}
+        </div>
+        {/* Sub-tasks */}
+        {subTasks.length>0&&<div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--t3)",marginBottom:6}}>Sub-Tasks ({subTasks.length})</div>
+          <div style={{display:"flex",flexDirection:"column",gap:3}}>
+            {subTasks.map(st=>{
+              const stAssignee=wMap[st.assignee_id]||{};
+              return<div key={st.id} onClick={()=>onRefresh&&onRefresh(st.id)} style={{padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:11,cursor:"pointer",display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{padding:"1px 5px",borderRadius:2,background:STATUS_C[st.status]+"22",color:STATUS_C[st.status],fontWeight:600,fontSize:10}}>{STATUS_L[st.status]||st.status}</span>
+                <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={st.title_object||st.title}>#{st.id} {st.title_object||st.title}</span>
+                <span style={{color:"var(--t4)",fontSize:10}}>{stAssignee.name||"-"}</span>
+                <span style={{color:"var(--t4)",fontSize:10,minWidth:90,textAlign:"right"}}>{st.start_date?st.start_date.slice(5,10):"-"} ~ {st.end_date?st.end_date.slice(5,10):"-"}</span>
+              </div>;
+            })}
+          </div>
+        </div>}
+        {/* Schedule changes history */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--t3)",marginBottom:6}}>변경 이력 {histLoading?"...":"("+history.length+")"}</div>
+          {history.length===0&&!histLoading&&<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic",padding:"6px 0"}}>변경 기록 없음</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflow:"auto"}}>
+            {history.map((h,i)=>{
+              const dt=h.created_at?new Date(h.created_at).toISOString().slice(0,10):"";
+              return<div key={h.id||i} style={{padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:11,background:"var(--bg)"}}>
+                <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:2}}>
+                  <span style={{color:"var(--t4)",fontSize:10}}>{dt}</span>
+                  <span style={{color:"var(--t2)",fontWeight:600}}>{h.changed_by||"-"}</span>
+                </div>
+                <div style={{color:"var(--t1)"}}>{fmtField[h.field]||h.field}: <span style={{color:"var(--t4)"}}>{h.old_value||"-"}</span> → <span style={{color:"var(--ac)",fontWeight:600}}>{h.new_value||"-"}</span></div>
+                {h.reason&&<div style={{color:"var(--t3)",marginTop:2,fontStyle:"italic"}}>"{h.reason}"</div>}
+              </div>;
+            })}
+          </div>
+        </div>
+      </div>
+      {/* Footer actions */}
+      <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,alignItems:"center"}}>
+        {!isDone&&isMyTask&&<button className="bt bt-s" onClick={()=>setShowRequest(true)} style={{background:"#0891b2",color:"#fff",borderColor:"#0891b2"}}>📅 일정 조정 요청</button>}
+        {!isDone&&isAdmin&&<button className="bt bt-s" onClick={()=>setShowDirect(true)} style={{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}}>⚡ 직접 조정</button>}
+        {isDone&&<span style={{fontSize:11,color:"var(--t4)"}}>완료된 태스크는 편집 불가</span>}
+        <button className="bt bt-s" onClick={onClose} style={{marginLeft:"auto"}}>닫기</button>
+      </div>
+    </div>
+    {showRequest&&<ScheduleRequestModal task={task} mode='request' user={user} workers={workers} allTasks={allTasks}
+      onClose={()=>setShowRequest(false)}
+      onDone={()=>{setShowRequest(false);onRefresh&&onRefresh(task.id);window.showToast&&window.showToast("일정 조정 요청 제출됨")}}/>}
+    {showDirect&&<ScheduleRequestModal task={task} mode='direct_apply' user={user} workers={workers} allTasks={allTasks}
+      onClose={()=>setShowDirect(false)}
+      onDone={(res)=>{setShowDirect(false);onRefresh&&onRefresh(task.id);const msg="✓ "+(res?.applied||1)+"건 적용"+(res?.jiraQueued?" / JIRA 큐 "+res.jiraQueued+"건":"");window.showToast&&window.showToast(msg)}}/>}
+  </>;
+}
+
+/* ═══ PENDING SCHEDULE DETECTION (v22 Track 7) ═══ */
+/* A=NULL B=공휴일/주말-only C=인접공백5+영업일 D=동일parent+동일일정3+ */
+function detectPendingScheduleTasks(allTasks){
+  const out={nullSched:[],holidayOnly:[],gapAfter:[],placeholderGroup:[]};
+  const live=(allTasks||[]).filter(t=>t.status!=='done');
+  // A. NULL 일정
+  live.forEach(t=>{if(!t.start_date||!t.end_date)out.nullSched.push(t)});
+  // B. 공휴일/주말 only
+  live.forEach(t=>{
+    if(!t.start_date||!t.end_date)return;
+    const s=t.start_date.slice(0,10),e=t.end_date.slice(0,10);
+    if(s!==e)return; // 1일짜리만 우선 판정
+    const d=new Date(s+"T00:00:00");
+    if(!isBusinessDay(d))out.holidayOnly.push(t);
+  });
+  // C. 동일 worker 인접 공백 ≥ 5 영업일
+  const byWorker={};
+  live.forEach(t=>{
+    if(!t.start_date||!t.end_date||!t.assignee_id)return;
+    (byWorker[t.assignee_id]=byWorker[t.assignee_id]||[]).push(t);
+  });
+  Object.entries(byWorker).forEach(([wid,arr])=>{
+    arr.sort((a,b)=>(a.start_date||'').localeCompare(b.start_date||''));
+    for(let i=1;i<arr.length;i++){
+      const prev=arr[i-1].end_date.slice(0,10),cur=arr[i].start_date.slice(0,10);
+      if(cur<=prev)continue;
+      const gap=businessDaysDiff(prev,cur);
+      if(gap>=5)out.gapAfter.push({task:arr[i],prev:arr[i-1],gap});
+    }
+  });
+  // D. 동일 parent + 동일 일정 3+ child
+  const byParent={};
+  live.forEach(t=>{
+    if(!t.parent_task_id||!t.start_date||!t.end_date)return;
+    const k=t.parent_task_id+"|"+t.start_date.slice(0,10)+"|"+t.end_date.slice(0,10);
+    (byParent[k]=byParent[k]||[]).push(t);
+  });
+  Object.values(byParent).forEach(arr=>{
+    if(arr.length>=3)out.placeholderGroup.push({parent_id:arr[0].parent_task_id,start:arr[0].start_date.slice(0,10),end:arr[0].end_date.slice(0,10),tasks:arr});
+  });
+  return out;
+}
+
 /* ═══ SCHEDULE CHANGE REQUEST / DIRECT EDIT MODAL (v21 일정 조정) ═══ */
 /* mode: 'request' = 작업자 본인 task 요청 워크플로 / 'direct_apply' = 관리자 즉시 적용 + cascade + JIRA 큐 */
 function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose,onDone}){
@@ -3947,19 +4180,30 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
 }
 
 /* ═══ NOTICE BAR ═══ */
-function NoticeBar({changes,user,onJump,onOpenAdmin}){
+function NoticeBar({changes,user,onJump,onOpenAdmin,allTasks,onTaskClick}){
   const[expanded,setExp]=useState(false);
   const[dismissed,setDis]=useState(()=>{try{return JSON.parse(localStorage.getItem("pipeline_dismissed_changes")||"[]")}catch(e){return[]}});
   const[scheduleReqs,setScheduleReqs]=useState([]);
+  const[pendingExpanded,setPendingExp]=useState(false);
   useEffect(()=>{
     if(!user)return;
     db.scheduleRequests().then(r=>setScheduleReqs(r||[])).catch(()=>setScheduleReqs([]));
   },[user]);
   const myApprovalPending=useMemo(()=>(scheduleReqs||[]).filter(r=>(r.lvl1_approver_id===user?.id&&r.status==="pending")||(r.lvl2_approver_id===user?.id&&r.status==="lvl1_approved")),[scheduleReqs,user]);
   const myRequestUpdates=useMemo(()=>(scheduleReqs||[]).filter(r=>r.requester_id===user?.id&&(r.status==="approved"||r.status==="rejected"||r.status==="lvl1_approved")),[scheduleReqs,user]);
+  // v22 Track 7: 본인 task 중 일정 미정 (A=NULL + B=공휴일-only)
+  const myPending=useMemo(()=>{
+    if(!user||!allTasks)return[];
+    const det=detectPendingScheduleTasks(allTasks);
+    const isMine=t=>t.assignee_id===user.id;
+    const out=[];
+    det.nullSched.filter(isMine).forEach(t=>out.push({task:t,reason:"NULL 일정"}));
+    det.holidayOnly.filter(isMine).forEach(t=>out.push({task:t,reason:"공휴일/주말"}));
+    return out;
+  },[allTasks,user]);
   const recent=useMemo(()=>{const cutoff=Date.now()-7*24*60*60*1000;
     return(changes||[]).filter(c=>new Date(c.created_at).getTime()>cutoff&&!dismissed.includes(c.id))},[changes,dismissed]);
-  if(recent.length===0&&myApprovalPending.length===0&&myRequestUpdates.length===0)return null;
+  if(recent.length===0&&myApprovalPending.length===0&&myRequestUpdates.length===0&&myPending.length===0)return null;
   const visible=expanded?recent:recent.slice(0,2);
   const fmtField={start_date:"시작일",end_date:"종료일",version_id:"버전",gate:"게이트",locked:"잠금"};
   const fmt=(c)=>{const d=new Date(c.created_at);const md=(d.getMonth()+1)+"-"+String(d.getDate()).padStart(2,"0");
@@ -3967,6 +4211,22 @@ function NoticeBar({changes,user,onJump,onOpenAdmin}){
     const isMine=user&&(own===user.name||c.changed_by===user.name);
     return{md,cn,isMine,fld:fmtField[c.field]||c.field,old:c.old_value||"-",nv:c.new_value||"-",reason:c.reason,by:c.changed_by}};
   return<div className="notice">
+    {myPending.length>0&&<div style={{marginBottom:6,padding:"6px 10px",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:12,fontWeight:700,color:"#991b1b"}}>⚠️ 본인 일정 미정 작업 {myPending.length}건</span>
+        <span style={{fontSize:11,color:"#7f1d1d"}}>- 입력 필요 (NULL 일정 또는 공휴일/주말 단일)</span>
+        <button onClick={()=>setPendingExp(!pendingExpanded)} style={{marginLeft:"auto",background:"none",border:"1px solid #fca5a5",borderRadius:4,padding:"1px 8px",fontSize:11,cursor:"pointer",color:"#991b1b"}}>{pendingExpanded?"접기":"전체 보기"}</button>
+      </div>
+      {pendingExpanded&&<div style={{marginTop:6,display:"flex",flexDirection:"column",gap:3}}>
+        {myPending.slice(0,20).map(({task,reason})=>
+          <div key={task.id} onClick={()=>onTaskClick&&onTaskClick(task.id)} style={{padding:"4px 8px",background:"#fff",border:"1px solid #fecaca",borderRadius:3,fontSize:11,cursor:onTaskClick?"pointer":"default",display:"flex",gap:6,alignItems:"center"}}>
+            <span style={{padding:"1px 5px",background:"#fef2f2",color:"#991b1b",borderRadius:2,fontSize:10,fontWeight:600}}>{reason}</span>
+            <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{task.id} {task.title_object||task.title}</span>
+            <span style={{color:"var(--t4)",fontSize:10}}>{task.start_date||"미정"}{task.start_date!==task.end_date?" ~ "+(task.end_date||"미정"):""}</span>
+          </div>)}
+        {myPending.length>20&&<div style={{fontSize:10,color:"var(--t4)",textAlign:"center"}}>외 {myPending.length-20}건 (관리자 페이지 일정 미정 탭에서 전체 보기)</div>}
+      </div>}
+    </div>}
     {(myApprovalPending.length>0||myRequestUpdates.length>0)&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 10px",background:myApprovalPending.length>0?"#fef3c7":"var(--bg2)",border:"1px solid "+(myApprovalPending.length>0?"#fbbf24":"var(--bd)"),borderRadius:6}}>
       {myApprovalPending.length>0&&<span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>📅 본인 승인 대기 {myApprovalPending.length}건</span>}
       {myRequestUpdates.length>0&&<span style={{fontSize:11,color:"var(--t3)"}}>· 본인 요청 진행: {myRequestUpdates.filter(r=>r.status==="lvl1_approved").length}건 2차 대기 / {myRequestUpdates.filter(r=>r.status==="approved").length}건 승인 / {myRequestUpdates.filter(r=>r.status==="rejected").length}건 거절</span>}
@@ -4502,6 +4762,19 @@ function App(){
   const[importModal,setImportModal]=useState(false);
   const[adminPanel,setAdminPanel]=useState(false);
   const[toastMsg,setToastMsg]=useState(null);
+  // v22 Track 6: TaskDetailPanel (URL hash 동기)
+  const[panelTaskId,setPanelTaskId]=useState(()=>{const m=window.location.hash.match(/task=(\d+)/);return m?parseInt(m[1],10):null});
+  useEffect(()=>{
+    const onHash=()=>{const m=window.location.hash.match(/task=(\d+)/);setPanelTaskId(m?parseInt(m[1],10):null)};
+    window.addEventListener("hashchange",onHash);
+    return()=>window.removeEventListener("hashchange",onHash);
+  },[]);
+  const openTaskPanel=useCallback(id=>{
+    if(!id){setPanelTaskId(null);if(window.location.hash.startsWith("#task="))history.replaceState(null,"",window.location.pathname+window.location.search);return}
+    setPanelTaskId(id);
+    history.replaceState(null,"","#task="+id);
+  },[]);
+  const closeTaskPanel=useCallback(()=>openTaskPanel(null),[openTaskPanel]);
   useEffect(()=>{
     let timer;
     window.showToast=(msg)=>{setToastMsg(msg);if(timer)clearTimeout(timer);timer=setTimeout(()=>setToastMsg(null),2000)};
@@ -4694,7 +4967,7 @@ function App(){
         <button className="bt bt-i" onClick={load}>↻</button></div></div>
 
     {/* Notice */}
-    {!ld&&<NoticeBar changes={changes} user={user} onJump={handleJump} onOpenAdmin={()=>setAdminPanel(true)}/>}
+    {!ld&&<NoticeBar changes={changes} user={user} onJump={handleJump} onOpenAdmin={()=>setAdminPanel(true)} allTasks={allT} onTaskClick={openTaskPanel}/>}
 
     {/* Milestone Timeline */}
     {!ld&&ms.length>0&&<MilestoneTimeline milestones={ms} versions={vr}/>}
@@ -4714,8 +4987,8 @@ function App(){
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load} deps={deps} allT={allT} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk} dependencies={deps} depViolations={depV}/>}
-        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} versions={vr} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
-        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV} onRefresh={load} user={user}/>}
+        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} versions={vr} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}} onTaskClick={openTaskPanel}/>}
+        {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV} onRefresh={load} user={user} onTaskClick={openTaskPanel}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="deps"&&<DepViolationView depViolations={depV} tasks={allT} workers={wk} contents={ct} onRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="add"&&<AddForm vr={vr} onDone={load}/>}
@@ -4724,7 +4997,8 @@ function App(){
 
     {importModal&&user&&<ImportModal user={user} workers={wk} onClose={()=>setImportModal(false)} onDone={(summary)=>{load(true);db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"import.run",target_table:"contents",target_id:null,payload:summary||{}})}}/>}
     {jiraSyncModal&&<JiraSyncModal tasks={allT} onClose={()=>setJiraSyncModal(false)} onDone={(summary)=>{load(true);db.addAudit({actor_worker_id:user.id,actor_email:user.email,action_type:"jira.sync",target_table:"tasks",target_id:null,payload:summary||{}})}}/>}
-    {adminPanel&&user&&(user.is_team_lead||user.is_lead)&&<AdminPanel user={user} workers={wk} tasks={allT} allTasks={allT} onClose={()=>setAdminPanel(false)} onDone={()=>load(true)} onOpenImport={()=>{setAdminPanel(false);setImportModal(true)}} onOpenJira={()=>{setAdminPanel(false);setJiraSyncModal(true)}} onExportCSV={exportCSV} onRefresh={load}/>}
+    {adminPanel&&user&&(user.is_team_lead||user.is_lead)&&<AdminPanel user={user} workers={wk} tasks={allT} allTasks={allT} onClose={()=>setAdminPanel(false)} onDone={()=>load(true)} onOpenImport={()=>{setAdminPanel(false);setImportModal(true)}} onOpenJira={()=>{setAdminPanel(false);setJiraSyncModal(true)}} onExportCSV={exportCSV} onRefresh={load} onTaskClick={(id)=>{setAdminPanel(false);openTaskPanel(id)}}/>}
+    {panelTaskId&&user&&<TaskDetailPanel taskId={panelTaskId} allTasks={allT} workers={wk} contents={ct} user={user} onClose={closeTaskPanel} onRefresh={(newId)=>{load(true);if(newId&&newId!==panelTaskId)openTaskPanel(newId)}}/>}
     {toastMsg&&<div style={{position:"fixed",top:16,right:16,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.18)",zIndex:9999,animation:"toastIn .18s ease-out"}}>✓ {toastMsg}</div>}
   </div>
 }
