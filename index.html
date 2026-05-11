@@ -3768,6 +3768,7 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const[histLoading,setHistLoading]=useState(false);
   const[showRequest,setShowRequest]=useState(false);
   const[showDirect,setShowDirect]=useState(false);
+  const[showNewSub,setShowNewSub]=useState(false);
   useEffect(()=>{
     if(!task){setHistory([]);return}
     setHistLoading(true);
@@ -3794,6 +3795,8 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const isMyTask=user&&task.assignee_id===user.id;
   const isAdmin=user&&(user.is_team_lead||user.is_lead);
   const isDone=task.status==='done';
+  // v22 Track A: + Sub-Task 추가 권한 = 관리자 + 본인 owner (parent 인 경우)
+  const canAddSub=isAdmin||isMyTask;
   const STATUS_L={waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"};
   const STATUS_C={waiting:"#6b7280",progress:"#0891b2",done:"#059669",blocked:"#dc2626"};
   const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트"};
@@ -3860,10 +3863,11 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
         </div>
       </div>
       {/* Footer actions */}
-      <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {!isDone&&isMyTask&&<button className="bt bt-s" onClick={()=>setShowRequest(true)} style={{background:"#0891b2",color:"#fff",borderColor:"#0891b2"}}>📅 일정 조정 요청</button>}
         {!isDone&&isAdmin&&<button className="bt bt-s" onClick={()=>setShowDirect(true)} style={{background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}}>⚡ 직접 조정</button>}
-        {isDone&&<span style={{fontSize:11,color:"var(--t4)"}}>완료된 태스크는 편집 불가</span>}
+        {canAddSub&&<button className="bt bt-s" onClick={()=>setShowNewSub(true)} style={{background:"#059669",color:"#fff",borderColor:"#059669"}}>+ Sub-Task 추가</button>}
+        {isDone&&!canAddSub&&<span style={{fontSize:11,color:"var(--t4)"}}>완료된 태스크는 편집 불가</span>}
         <button className="bt bt-s" onClick={onClose} style={{marginLeft:"auto"}}>닫기</button>
       </div>
     </div>
@@ -3873,7 +3877,180 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
     {showDirect&&<ScheduleRequestModal task={task} mode='direct_apply' user={user} workers={workers} allTasks={allTasks} zOverride={9999}
       onClose={()=>setShowDirect(false)}
       onDone={(res)=>{setShowDirect(false);onRefresh&&onRefresh(task.id);const msg="✓ "+(res?.applied||1)+"건 적용"+(res?.jiraQueued?" / JIRA 큐 "+res.jiraQueued+"건":"");window.showToast&&window.showToast(msg)}}/>}
+    {showNewSub&&<NewSubTaskModal parentTask={task} user={user} workers={workers} allTasks={allTasks} zOverride={9999}
+      onClose={()=>setShowNewSub(false)}
+      onDone={(res)=>{setShowNewSub(false);onRefresh&&onRefresh(task.id);const msg="✓ Sub-Task #"+res?.newTaskId+" 등록"+(res?.parentExpanded?" / 부모 일정 자동 확장":"");window.showToast&&window.showToast(msg)}}/>}
   </>;
+}
+
+/* ═══ NEW SUB-TASK MODAL (v22 Track A: 패널에서 신규 sub-task 등록) ═══ */
+/* parent task 아래 신규 sub-task INSERT + 자동 parent expand + JIRA prefill 옵션 */
+function NewSubTaskModal({parentTask,user,workers,allTasks,zOverride,onClose,onDone}){
+  const ACTION_VERBS=[
+    {v:"design",l:"기획"},{v:"implement",l:"구현"},{v:"polish",l:"폴리싱"},
+    {v:"resource",l:"리소스 제작"},{v:"feedback",l:"피드백 반영"},{v:"qa",l:"QA"},
+    {v:"refine",l:"수정"},{v:"verify",l:"검증"}
+  ];
+  const[title,setTitle]=useState("");
+  const[actionVerb,setActionVerb]=useState("polish");
+  const[ds,setDs]=useState("");
+  const[de,setDe]=useState("");
+  const[assigneeId,setAssigneeId]=useState(parentTask.assignee_id||(user?.id));
+  const[versionId,setVersionId]=useState(parentTask.version_id||"");
+  const[reason,setReason]=useState("");
+  const[expandParent,setExpandParent]=useState(true);
+  const[openJira,setOpenJira]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState(null);
+  // 부모 일정 확장 미리보기
+  const parentExpand=useMemo(()=>{
+    if(!parentTask.start_date||!parentTask.end_date||!ds||!de)return null;
+    const ps=parentTask.start_date.slice(0,10),pe=parentTask.end_date.slice(0,10);
+    const newPs=ds<ps?ds:ps;
+    const newPe=de>pe?de:pe;
+    if(newPs===ps&&newPe===pe)return null;
+    return{old_start:ps,old_end:pe,new_start:newPs,new_end:newPe,done:parentTask.status==='done'};
+  },[parentTask,ds,de]);
+  // sort_order 계산 (parent 의 child 중 max + 1)
+  const nextSortOrder=useMemo(()=>{
+    const children=(allTasks||[]).filter(t=>t.parent_task_id===parentTask.id);
+    return Math.max(0,...children.map(c=>c.sort_order||0))+1;
+  },[allTasks,parentTask]);
+  const submit=async()=>{
+    if(!title.trim()){setErr("제목 필수");return}
+    if(!ds||!de){setErr("시작/종료일 필수");return}
+    if(de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
+    if(!assigneeId){setErr("담당자 선택 필수");return}
+    if(parentExpand&&parentExpand.done&&expandParent){setErr("부모 task 가 status=done 입니다. 자동 확장 체크 해제 후 진행하거나 별도 parent 로 분리하세요.");return}
+    setSaving(true);setErr(null);
+    try{
+      const days=businessDaysDiff(ds,de)+1;
+      const reasonText=reason.trim()||"패널에서 sub-task 신규 등록";
+      // 1) 신규 task INSERT
+      const newTaskPayload={
+        content_id:parentTask.content_id,
+        parent_task_id:parentTask.id,
+        title:title.trim(),
+        title_object:title.trim(),
+        action_verb:actionVerb,
+        start_date:ds,
+        end_date:de,
+        status:"waiting",
+        assignee_id:assigneeId,
+        version_id:versionId||null,
+        sort_order:nextSortOrder,
+        days,
+        issue_type:"Sub-Task",
+        related_part:parentTask.related_part||null,
+        notes:reasonText
+      };
+      const inserted=await db.bulkTasks([newTaskPayload]);
+      const newTask=(inserted||[])[0];
+      if(!newTask||!newTask.id)throw new Error("Sub-Task INSERT 실패 (응답 없음)");
+      // 2) schedule_changes 이력
+      await db.addChange({content_id:parentTask.content_id||null,task_id:newTask.id,field:"insert",old_value:"-",new_value:ds+"~"+de,reason:reasonText+" (parent #"+parentTask.id+")",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+      // 3) parent 일정 확장
+      let parentExpanded=false;
+      if(parentExpand&&expandParent&&!parentExpand.done){
+        const patch={updated_at:new Date().toISOString()};
+        if(parentExpand.new_start!==parentExpand.old_start)patch.start_date=parentExpand.new_start;
+        if(parentExpand.new_end!==parentExpand.old_end)patch.end_date=parentExpand.new_end;
+        await db.updTask(parentTask.id,patch);
+        if(patch.start_date)await db.addChange({content_id:parentTask.content_id||null,task_id:parentTask.id,field:"start_date",old_value:parentExpand.old_start,new_value:parentExpand.new_start,reason:"신규 sub-task #"+newTask.id+" 등록에 따른 parent 자동 확장",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        if(patch.end_date)await db.addChange({content_id:parentTask.content_id||null,task_id:parentTask.id,field:"end_date",old_value:parentExpand.old_end,new_value:parentExpand.new_end,reason:"신규 sub-task #"+newTask.id+" 등록에 따른 parent 자동 확장",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        parentExpanded=true;
+      }
+      // 4) JIRA prefill 새 탭
+      if(openJira){
+        // 사내 JIRA URL: https://jira.nmn.io/secure/CreateIssue.jspa?... (사용자 사내 SSO 로그인 가정)
+        // pid/issuetype 숫자 ID 없이도 user 가 선택 가능하도록 summary/description 만 prefill
+        const summary=encodeURIComponent(title.trim());
+        const desc=encodeURIComponent("부모: #"+parentTask.id+" "+(parentTask.title_object||parentTask.title||"")+"\n일정: "+ds+" ~ "+de+"\n담당자: "+((workers||[]).find(w=>w.id===assigneeId)?.name||"-")+"\n트래커 task: #"+newTask.id+"\n사유: "+reasonText);
+        const jiraUrl="https://jira.nmn.io/secure/CreateIssue.jspa?summary="+summary+"&description="+desc;
+        window.open(jiraUrl,"_blank","noopener");
+      }
+      onDone&&onDone({newTaskId:newTask.id,parentExpanded});
+      onClose();
+    }catch(e){setErr("등록 실패: "+(e.message||e));setSaving(false)}
+  };
+  const versions=useMemo(()=>{const s=new Set();(allTasks||[]).forEach(t=>{if(t.version_id)s.add(t.version_id)});return[...s].sort()},[allTasks]);
+  const assigneeWorkers=(workers||[]).filter(w=>w.is_active!==false).sort((a,b)=>(a.part_id||'').localeCompare(b.part_id||'')||(a.name||'').localeCompare(b.name||''));
+  return<div className="modal-bg" onClick={onClose} style={zOverride?{zIndex:zOverride}:undefined}>
+    <div className="modal" style={{maxWidth:560,width:"94vw"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h" style={{background:"#059669",color:"#fff"}}>＋ 신규 Sub-Task 등록 - 부모 #{parentTask.id}</div>
+      <div className="modal-b" style={{maxHeight:"70vh",overflow:"auto"}}>
+        <div style={{padding:"8px 12px",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6,fontSize:11,color:"#065f46",marginBottom:12,lineHeight:1.6}}>
+          🌱 <b>부모 task</b>: {parentTask.title_object||parentTask.title} <span style={{color:"#047857"}}>({parentTask.start_date?.slice(0,10)} ~ {parentTask.end_date?.slice(0,10)}, {({waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"})[parentTask.status]||parentTask.status})</span>
+        </div>
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>제목 <span style={{color:"var(--rd)"}}>*</span></div>
+          <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 챕터4.1 메인 퀘스트 보스(쉘윈) 추가 폴리싱" style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:13,fontFamily:"inherit"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+          <div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>작업 유형</div>
+            <select value={actionVerb} onChange={e=>setActionVerb(e.target.value)} style={{width:"100%",fontSize:12,padding:"5px 6px",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"inherit"}}>
+              {ACTION_VERBS.map(av=><option key={av.v} value={av.v}>{av.l} ({av.v})</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>버전</div>
+            <select value={versionId} onChange={e=>setVersionId(e.target.value)} style={{width:"100%",fontSize:12,padding:"5px 6px",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"inherit"}}>
+              <option value="">(미지정)</option>
+              {versions.map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+          <div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>시작일 <span style={{color:"var(--rd)"}}>*</span></div>
+            <input type="date" value={ds} onChange={e=>setDs(e.target.value)} style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:13}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>종료일 <span style={{color:"var(--rd)"}}>*</span></div>
+            <input type="date" value={de} onChange={e=>setDe(e.target.value)} style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:13}}/>
+          </div>
+        </div>
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>담당자 <span style={{color:"var(--rd)"}}>*</span></div>
+          <select value={assigneeId||""} onChange={e=>setAssigneeId(parseInt(e.target.value,10))} style={{width:"100%",fontSize:12,padding:"5px 6px",border:"1px solid var(--bd)",borderRadius:4,fontFamily:"inherit"}}>
+            {assigneeWorkers.map(w=><option key={w.id} value={w.id}>{w.name} ({w.part_id||"-"}){w.is_part_lead?" ★":""}</option>)}
+          </select>
+        </div>
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"var(--t3)",marginBottom:4}}>등록 사유 (선택)</div>
+          <input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="예: S02 시즌 폴리싱 작업 추가 필요" style={{width:"100%",padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:12,fontFamily:"inherit"}}/>
+        </div>
+        {/* parent 확장 미리보기 */}
+        {parentExpand&&<div style={{padding:"8px 12px",background:parentExpand.done?"#fef2f2":"#fffbeb",border:"1px solid "+(parentExpand.done?"#fecaca":"#fde68a"),borderRadius:6,fontSize:11,marginBottom:12,lineHeight:1.6}}>
+          {parentExpand.done?<>
+            <div style={{color:"#991b1b",fontWeight:600}}>⚠ 부모 task #{parentTask.id} 가 status=done 입니다.</div>
+            <div style={{color:"#7f1d1d"}}>자동 확장 시 완료된 task 일정이 변경됨 → 이력 왜곡 우려. 별도 parent 분리 권장.</div>
+          </>:<>
+            <div style={{color:"#92400e",fontWeight:600}}>부모 #{parentTask.id} 일정 확장 예정</div>
+            <div style={{color:"#78350f"}}>{parentExpand.old_start} ~ {parentExpand.old_end} → {parentExpand.new_start} ~ {parentExpand.new_end}</div>
+          </>}
+        </div>}
+        {/* 적용 옵션 */}
+        <div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)"}}>
+          <div style={{fontWeight:600,marginBottom:6,color:"var(--t2)"}}>적용 옵션</div>
+          {parentExpand&&!parentExpand.done&&<label style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer"}}>
+            <input type="checkbox" checked={expandParent} onChange={e=>setExpandParent(e.target.checked)}/>
+            <span>부모 #{parentTask.id} 일정 자동 확장</span>
+          </label>}
+          <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+            <input type="checkbox" checked={openJira} onChange={e=>setOpenJira(e.target.checked)}/>
+            <span>등록 후 JIRA 일감 생성 페이지 새 탭 오픈 (사내 SSO 로그인 필요)</span>
+          </label>
+        </div>
+        {err&&<div style={{padding:"6px 10px",background:"var(--rd-bg)",color:"var(--rd)",borderRadius:4,fontSize:12,marginBottom:10}}>{err}</div>}
+      </div>
+      <div style={{padding:"10px 14px",borderTop:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="bt bt-s" onClick={onClose} disabled={saving}>취소</button>
+        <button className="bt bt-s" onClick={submit} disabled={saving} style={{background:"#059669",color:"#fff",borderColor:"#059669"}}>{saving?"등록 중...":"＋ 등록"}</button>
+      </div>
+    </div>
+  </div>;
 }
 
 /* ═══ PENDING SCHEDULE DETECTION (v22 Track 7) ═══ */
