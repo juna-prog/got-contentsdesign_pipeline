@@ -3778,7 +3778,7 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
     window.addEventListener("keydown",onKey);
     return()=>window.removeEventListener("keydown",onKey);
   },[onClose]);
-  if(!task)return<div style={{position:"fixed",top:0,right:0,width:420,height:"100vh",background:"#fff",borderLeft:"1px solid var(--bd)",boxShadow:"-4px 0 12px rgba(0,0,0,.08)",zIndex:8000,padding:20,fontSize:13,color:"var(--t3)",display:"flex",flexDirection:"column"}}>
+  if(!task)return<div style={{position:"fixed",top:0,right:0,width:420,height:"100vh",background:"#fff",borderLeft:"1px solid var(--bd)",boxShadow:"-4px 0 12px rgba(0,0,0,.18)",zIndex:8000,padding:20,fontSize:13,color:"var(--t3)",display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
       <span style={{fontWeight:700}}>태스크 상세</span>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"var(--t3)"}}>✕</button>
@@ -3799,10 +3799,8 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트"};
   const jiraKey=(()=>{const m=String(task.jira_url||'').match(/([A-Z]+-\d+)/);return m?m[1]:null})();
   return<>
-    {/* Backdrop (clickable to close, dimmed) */}
-    <div onClick={onClose} style={{position:"fixed",top:0,left:0,right:420,bottom:0,background:"rgba(0,0,0,.18)",zIndex:7999}}/>
-    {/* Right panel */}
-    <div style={{position:"fixed",top:0,right:0,width:420,height:"100vh",background:"#fff",borderLeft:"1px solid var(--bd)",boxShadow:"-4px 0 12px rgba(0,0,0,.12)",zIndex:8000,display:"flex",flexDirection:"column",fontSize:13}}>
+    {/* Right panel (no backdrop - X button or ESC to close) */}
+    <div style={{position:"fixed",top:0,right:0,width:420,height:"100vh",background:"#fff",borderLeft:"1px solid var(--bd)",boxShadow:"-6px 0 20px rgba(0,0,0,.15)",zIndex:8000,display:"flex",flexDirection:"column",fontSize:13}}>
       {/* Header */}
       <div style={{padding:"12px 14px",borderBottom:"1px solid var(--bd)",background:"var(--bg2)",display:"flex",alignItems:"center",gap:8}}>
         <span style={{fontSize:11,color:"var(--t4)",fontWeight:600}}>#{task.id}</span>
@@ -3869,10 +3867,10 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
         <button className="bt bt-s" onClick={onClose} style={{marginLeft:"auto"}}>닫기</button>
       </div>
     </div>
-    {showRequest&&<ScheduleRequestModal task={task} mode='request' user={user} workers={workers} allTasks={allTasks}
+    {showRequest&&<ScheduleRequestModal task={task} mode='request' user={user} workers={workers} allTasks={allTasks} zOverride={9999}
       onClose={()=>setShowRequest(false)}
       onDone={()=>{setShowRequest(false);onRefresh&&onRefresh(task.id);window.showToast&&window.showToast("일정 조정 요청 제출됨")}}/>}
-    {showDirect&&<ScheduleRequestModal task={task} mode='direct_apply' user={user} workers={workers} allTasks={allTasks}
+    {showDirect&&<ScheduleRequestModal task={task} mode='direct_apply' user={user} workers={workers} allTasks={allTasks} zOverride={9999}
       onClose={()=>setShowDirect(false)}
       onDone={(res)=>{setShowDirect(false);onRefresh&&onRefresh(task.id);const msg="✓ "+(res?.applied||1)+"건 적용"+(res?.jiraQueued?" / JIRA 큐 "+res.jiraQueued+"건":"");window.showToast&&window.showToast(msg)}}/>}
   </>;
@@ -3923,7 +3921,7 @@ function detectPendingScheduleTasks(allTasks){
 
 /* ═══ SCHEDULE CHANGE REQUEST / DIRECT EDIT MODAL (v21 일정 조정) ═══ */
 /* mode: 'request' = 작업자 본인 task 요청 워크플로 / 'direct_apply' = 관리자 즉시 적용 + cascade + JIRA 큐 */
-function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose,onDone}){
+function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose,onDone,zOverride}){
   const isDirectApply=mode==='direct_apply';
   const curStart=task.start_date?task.start_date.slice(0,10):"";
   const curEnd=task.end_date?task.end_date.slice(0,10):"";
@@ -4057,7 +4055,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const reasonLabel=isDirectApply?"조정 사유":"요청 사유";
   const reasonPlaceholder=isDirectApply?"예: 5/14 라이브 D-1 일정 압축, 우선순위 상향":"예: 시나리오 검수 지연으로 일정 조정 필요";
   const submitLabel=isDirectApply?"즉시 적용":"요청 제출";
-  return<div className="modal-bg" onClick={onClose}>
+  return<div className="modal-bg" onClick={onClose} style={zOverride?{zIndex:zOverride}:undefined}>
     <div className="modal" style={{maxWidth:600,width:"94vw"}} onClick={e=>e.stopPropagation()}>
       <div className="modal-h" style={{background:isDirectApply?"#7c3aed":undefined,color:isDirectApply?"#fff":undefined}}>{headerIcon} {headerTitle} - {task.title_object||task.title||("태스크 #"+task.id)}</div>
       <div className="modal-b" style={{maxHeight:"70vh",overflow:"auto"}}>
