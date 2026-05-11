@@ -222,7 +222,7 @@ TH:[{d:"2026-01-01",n:"New Year"},{d:"2026-02-17",n:"Makha Bucha"},{d:"2026-04-0
 const HOL_COLORS={KR:"#dc2626",US:"#2563eb",JP:"#db2777",TW:"#059669",HK:"#d97706",IN:"#7c3aed",TH:"#0284c7"};
 const HOL_LABELS={KR:"한국",US:"서양",JP:"일본",TW:"대만",HK:"홍콩",IN:"인도",TH:"태국"};
 
-function GanttView({tasks,workers,milestones,parts,contents,versions,dependencies,depViolations,onDepRefresh,onTaskClick}){
+function GanttView({tasks,workers,milestones,parts,contents,versions,dependencies,depViolations,onDepRefresh,onTaskClick,user,onRefresh}){
   const[teamFilter,setTF]=useState("all");
   const[partFilter,setPF]=useState("all");
   const[verFilter,setVerF]=useState("all");
@@ -235,6 +235,11 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
   const[showHol,setShowHol]=useState(true);
   const[showDone,setShowDone]=useState(false);
   const[workerPopup,setWP]=useState(null); // {worker, tasks, x, y}
+  // v22 Track 8: task 막대 드래그 일정 조정
+  // dragTask = {task, mode:'move'|'resize-left'|'resize-right', origX, origDs, origDe, curDs, curDe, _lastDays}
+  const[dragTask,setDragTask]=useState(null);
+  // dragCommit = {task, mode, newStart, newEnd} → ScheduleRequestModal 호출 트리거
+  const[dragCommit,setDragCommit]=useState(null);
   const chartRef=useRef(null);const ganttWrapRef=useRef(null);const namesRef=useRef(null);const ganttDrag=useRef(null);
   // Right-click drag scroll for gantt chart
   useEffect(()=>{const el=chartRef.current;if(!el)return;
@@ -362,6 +367,78 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
   };
 
   const todayX=dateToX(new Date());
+
+  // v22 Track 8: 드래그 권한 체크 + bar onMouseDown 헬퍼
+  const isAdminUser=user&&(user.is_team_lead||user.is_lead);
+  const canDragTask=t=>{
+    if(!user||!t||!t.start_date||!t.end_date)return false;
+    if(t.status==='done')return false;
+    if(t._is_secondary)return false; // secondary assignee 는 드래그 불가
+    if(isAdminUser)return true;
+    return t.assignee_id===user.id; // 본인 owner
+  };
+  const addCalDays=(iso,n)=>{const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()+n);const y=d.getFullYear();const mo=String(d.getMonth()+1).padStart(2,'0');const dd=String(d.getDate()).padStart(2,'0');return y+"-"+mo+"-"+dd};
+  const beginDrag=(t,e)=>{
+    if(!canDragTask(t))return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const offsetX=e.clientX-rect.left;
+    const w=rect.width;
+    const HANDLE=8;
+    let mode='move';
+    if(offsetX<HANDLE)mode='resize-left';
+    else if(offsetX>w-HANDLE)mode='resize-right';
+    const ds=t.start_date.slice(0,10),de=t.end_date.slice(0,10);
+    setDragTask({task:t,mode,origX:e.clientX,origDs:ds,origDe:de,curDs:ds,curDe:de,_lastDays:0,_dx:0});
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  // Global mousemove/mouseup listeners during drag
+  useEffect(()=>{
+    if(!dragTask)return;
+    const onMove=e=>{
+      const dx=e.clientX-dragTask.origX;
+      const days=Math.round(dx/dayWidth);
+      if(days===dragTask._lastDays&&dx===dragTask._dx)return;
+      let ds=dragTask.origDs,de=dragTask.origDe;
+      if(dragTask.mode==='move'){
+        ds=addCalDays(dragTask.origDs,days);
+        de=addCalDays(dragTask.origDe,days);
+      }else if(dragTask.mode==='resize-left'){
+        ds=addCalDays(dragTask.origDs,days);
+        if(ds>de)ds=de;
+      }else if(dragTask.mode==='resize-right'){
+        de=addCalDays(dragTask.origDe,days);
+        if(de<ds)de=ds;
+      }
+      setDragTask(p=>p?{...p,_lastDays:days,_dx:dx,curDs:ds,curDe:de}:null);
+    };
+    const onUp=e=>{
+      const dx=Math.abs(e.clientX-dragTask.origX);
+      const moved=dragTask.curDs!==dragTask.origDs||dragTask.curDe!==dragTask.origDe;
+      if(dx<5&&!moved){
+        // click 으로 간주: 상세 패널 오픈
+        onTaskClick&&onTaskClick(dragTask.task.id);
+      }else if(moved){
+        // drag commit: ScheduleRequestModal 자동 열기
+        setDragCommit({task:dragTask.task,mode:dragTask.mode,newStart:dragTask.curDs,newEnd:dragTask.curDe});
+      }
+      setDragTask(null);
+    };
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+    return()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)};
+  },[dragTask,dayWidth,onTaskClick]);
+  // 막대 렌더 좌표: 드래그 중인 task 는 ghost 위치, 아니면 원래 위치
+  const getBarCoords=(t,defaultX1,defaultX2)=>{
+    if(dragTask&&dragTask.task.id===t.id){
+      const nx1=dateToX(dragTask.curDs);
+      const nx2=dateToX(dragTask.curDe);
+      return{left:nx1,width:Math.max(20,nx2-nx1),ghost:true};
+    }
+    return{left:defaultX1,width:Math.max(20,defaultX2-defaultX1),ghost:false};
+  };
+  // 막대 커서 추정 (마우스 이동 시): 리소스 부담 회피 위해 단순 'grab' 만
+  const barCursor=t=>canDragTask(t)?(dragTask?'grabbing':'grab'):'pointer';
 
   const toggleExpW=id=>setExpW(p=>({...p,[id]:!p[id]}));
 
@@ -588,12 +665,18 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
               const w=Math.max(20,x2-x1);
               const tverId=t.version_id||(t.contents&&t.contents.version_id);
               const tver=(versions||[]).find(vv=>vv.id===tverId);
+              const coord=getBarCoords(t,x1+(isC?16:0),x2);
+              const draggable=canDragTask(t);
               return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
                 {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
-                <div className="gantt-bar" style={{left:x1+(isC?16:0),top:6,width:w,background:bc,opacity:isC?.55:.85,border:isC?`1px dashed ${bc}`:undefined,height:isC?12:undefined}}
-                  onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})} onMouseLeave={()=>setTip(null)}>
-                  {w>60?(isC?"└ ":"")+formatTaskDisplay(t,t.contents):""}</div>
-                {tver&&w>30&&<span style={{position:"absolute",left:x1+w+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
+                <div className="gantt-bar" style={{left:coord.left,top:6,width:coord.width,background:bc,opacity:coord.ghost?.6:(isC?.55:.85),border:coord.ghost?"2px dashed #7c3aed":(isC?`1px dashed ${bc}`:undefined),height:isC?12:undefined,cursor:barCursor(t),userSelect:"none"}}
+                  onMouseDown={draggable?(e=>beginDrag(t,e)):undefined}
+                  onClick={!draggable?(()=>onTaskClick&&onTaskClick(t.id)):undefined}
+                  onMouseMove={draggable&&!dragTask?(e=>{const r=e.currentTarget.getBoundingClientRect();const ox=e.clientX-r.left;const w=r.width;if(ox<8||ox>w-8)e.currentTarget.style.cursor='ew-resize';else e.currentTarget.style.cursor='grab'}):undefined}
+                  onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}} onMouseLeave={()=>setTip(null)}>
+                  {coord.width>60?(isC?"└ ":"")+formatTaskDisplay(t,t.contents):""}</div>
+                {coord.ghost&&<div style={{position:"absolute",left:coord.left,top:-12,fontSize:10,fontWeight:700,color:"#7c3aed",background:"rgba(237,233,254,.95)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5,border:"1px solid #c4b5fd"}}>{dragTask?.curDs} ~ {dragTask?.curDe}</div>}
+                {tver&&coord.width>30&&!coord.ghost&&<span style={{position:"absolute",left:coord.left+coord.width+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
               </div>
             }
             // Worker row: render bars for dated tasks, inline labels for undated
@@ -616,13 +699,19 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 const bc=BAR_C[t.status]||BAR_C.waiting;
                 const tverId=t.version_id||(t.contents&&t.contents.version_id);
                 const tver=(versions||[]).find(vv=>vv.id===tverId);
+                const coord=getBarCoords(t,x1,x2);
+                const draggable=canDragTask(t);
                 return<React.Fragment key={t.id+(t._is_secondary?'-s':'')}>
                   <div className="gantt-bar"
-                    style={{left:x1,top:6,width:w,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:t._is_secondary?`1px dashed ${bc}`:undefined,opacity:t._is_secondary?.65:undefined}}
-                    onMouseEnter={e=>setTip({x:e.clientX,y:e.clientY,task:t})}
+                    style={{left:coord.left,top:6,width:coord.width,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:coord.ghost?"2px dashed #7c3aed":(t._is_secondary?`1px dashed ${bc}`:undefined),opacity:coord.ghost?.6:(t._is_secondary?.65:undefined),cursor:barCursor(t),userSelect:"none"}}
+                    onMouseDown={draggable?(e=>beginDrag(t,e)):undefined}
+                    onClick={!draggable?(()=>onTaskClick&&onTaskClick(t.id)):undefined}
+                    onMouseMove={draggable&&!dragTask?(e=>{const r=e.currentTarget.getBoundingClientRect();const ox=e.clientX-r.left;const w2=r.width;if(ox<8||ox>w2-8)e.currentTarget.style.cursor='ew-resize';else e.currentTarget.style.cursor='grab'}):undefined}
+                    onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}}
                     onMouseLeave={()=>setTip(null)}>
-                    {w>60?formatTaskDisplay(t,t.contents):""}</div>
-                  {tver&&w>30&&!t._is_secondary&&<span style={{position:"absolute",left:x1+w+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
+                    {coord.width>60?formatTaskDisplay(t,t.contents):""}</div>
+                  {coord.ghost&&<div style={{position:"absolute",left:coord.left,top:-12,fontSize:10,fontWeight:700,color:"#7c3aed",background:"rgba(237,233,254,.95)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5,border:"1px solid #c4b5fd"}}>{dragTask?.curDs} ~ {dragTask?.curDe}</div>}
+                  {tver&&coord.width>30&&!t._is_secondary&&!coord.ghost&&<span style={{position:"absolute",left:coord.left+coord.width+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
                 </React.Fragment>
               })}
             </div>
@@ -678,7 +767,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
     </div>}
 
     {/* Tooltip */}
-    {tooltip&&<div className="tooltip" style={{left:tooltip.x+12,top:tooltip.y-10}}>
+    {tooltip&&!dragTask&&<div className="tooltip" style={{left:tooltip.x+12,top:tooltip.y-10}}>
       <div style={{fontWeight:700,marginBottom:2}}>{tooltip.task.title||tooltip.task.task_name}</div>
       <div style={{fontSize:11,opacity:.8}}>
         {tooltip.task.contents?.name&&<div>콘텐츠: {tooltip.task.contents.name}</div>}
@@ -689,6 +778,17 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
         {tooltip.task.task_assignees&&tooltip.task.task_assignees.length>1&&<div>담당: {tooltip.task.task_assignees.map(ta=>ta.workers?.name).filter(Boolean).join(', ')}</div>}
       </div>
     </div>}
+    {/* v22 Track 8: 드래그 commit → ScheduleRequestModal 자동 열기 (admin = direct_apply / owner = request) */}
+    {dragCommit&&(()=>{
+      const t=dragCommit.task;
+      const isMine=user&&t.assignee_id===user.id;
+      const mode=isAdminUser?'direct_apply':(isMine?'request':null);
+      if(!mode){setDragCommit(null);return null}
+      return<ScheduleRequestModal task={{...t,_dragNewStart:dragCommit.newStart,_dragNewEnd:dragCommit.newEnd}} mode={mode} user={user} workers={workers} allTasks={tasks}
+        initialStart={dragCommit.newStart} initialEnd={dragCommit.newEnd} initialReason={"간트 드래그 "+(dragCommit.mode==='move'?'전체 이동':dragCommit.mode==='resize-left'?'시작일 조정':'종료일 조정')}
+        onClose={()=>setDragCommit(null)}
+        onDone={(res)=>{setDragCommit(null);onRefresh&&onRefresh();const msg=mode==='direct_apply'?("✓ "+(res?.applied||1)+"건 적용"+(res?.jiraQueued?" / JIRA 큐 "+res.jiraQueued+"건":"")):"일정 조정 요청 제출됨";window.showToast&&window.showToast(msg)}}/>;
+    })()}
   </div>
 }
 
@@ -4327,7 +4427,7 @@ function detectPendingScheduleTasks(allTasks){
 
 /* ═══ SCHEDULE CHANGE REQUEST / DIRECT EDIT MODAL (v21 일정 조정) ═══ */
 /* mode: 'request' = 작업자 본인 task 요청 워크플로 / 'direct_apply' = 관리자 즉시 적용 + cascade + JIRA 큐 */
-function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose,onDone,zOverride}){
+function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose,onDone,zOverride,initialStart,initialEnd,initialReason}){
   const isDirectApply=mode==='direct_apply';
   const curStart=task.start_date?task.start_date.slice(0,10):"";
   const curEnd=task.end_date?task.end_date.slice(0,10):"";
@@ -4337,14 +4437,15 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const curNotes=task.notes||"";
   const curJiraUrl=task.jira_url||"";
   const curVersionId=task.version_id||"";
-  const[ds,setDs]=useState(curStart);
-  const[de,setDe]=useState(curEnd);
+  // v22 Track 8: initial 값 (드래그 commit 진입 시 prefill)
+  const[ds,setDs]=useState(initialStart||curStart);
+  const[de,setDe]=useState(initialEnd||curEnd);
   const[ns,setNs]=useState(curStatus); // direct_apply 모드: 새 status (admin 만 status 동시 변경)
   const[nTitle,setNTitle]=useState(curTitle);
   const[nNotes,setNNotes]=useState(curNotes);
   const[nJiraUrl,setNJiraUrl]=useState(curJiraUrl);
   const[nVersionId,setNVersionId]=useState(curVersionId);
-  const[reason,setReason]=useState("");
+  const[reason,setReason]=useState(initialReason||"");
   const[cascadeChecked,setCascadeChecked]=useState(true); // direct_apply 모드: cascade 적용 여부 (기본 ON)
   const[jiraSyncChecked,setJiraSyncChecked]=useState(true); // direct_apply 모드: JIRA 큐 적재 여부 (기본 ON)
   const[showMeta,setShowMeta]=useState(false); // direct_apply 모드: 메타 필드 expand
@@ -5482,7 +5583,7 @@ function App(){
        err?<div style={{padding:24}}><h3 style={{color:"var(--rd)"}}>연결 오류</h3><p style={{color:"var(--t3)",marginTop:4}}>{err}</p></div>:<>
         {view==="pipeline"&&<PipelineView ct={fc} vr={vr} wk={wk} user={user} jumpId={jumpId} onRefresh={load} deps={deps} allT={allT} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
         {view==="build"&&<BuildView contents={ct} tasks={allT} versions={vr} milestones={ms} workers={wk} dependencies={deps} depViolations={depV}/>}
-        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} versions={vr} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}} onTaskClick={openTaskPanel}/>}
+        {view==="gantt"&&<GanttView tasks={allT} workers={wk} milestones={ms} parts={null} contents={ct} versions={vr} dependencies={deps} depViolations={depV} onDepRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}} onTaskClick={openTaskPanel} user={user} onRefresh={load}/>}
         {view==="tasks"&&<TaskSheet tasks={allT} workers={wk} contents={ct} versions={vr} filters={filters} onFilterChange={setFilter} dependencies={deps} depViolations={depV} onRefresh={load} user={user} onTaskClick={openTaskPanel}/>}
         {view==="slots"&&<SlotView workers={wk} tasks={allT}/>}
         {view==="deps"&&<DepViolationView depViolations={depV} tasks={allT} workers={wk} contents={ct} onRefresh={()=>{db.deps().then(setDeps);db.depViolations().then(setDepV)}}/>}
