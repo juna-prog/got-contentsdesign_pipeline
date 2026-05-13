@@ -810,19 +810,18 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75} style={{pointerEvents:"none"}}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')+(isAdminUser?' (클릭: 삭제)':'')}</title></path>
               </g>;
             })}
-            {/* v22 Track 10: 드래그 중 임시 연결선 (사용자 클릭 위치 → 현재 마우스 위치, body zoom 보정) */}
+            {/* v22 Track 10: 드래그 중 임시 연결선 (사용자 클릭 위치 → 마우스, body zoom 1.5 보정) */}
             {connectDrag&&(()=>{
               const rect=chartRef.current?.getBoundingClientRect();
               if(!rect)return null;
-              const zoom=parseFloat(getComputedStyle(document.body).zoom)||1;
+              // body{zoom:1.5} 하드코드 (getComputedStyle 가 'normal'/'' 반환하면 보정 실패하는 케이스 회피)
+              const zoom=1.5;
               const slL=chartRef.current.scrollLeft||0;
               const slT=chartRef.current.scrollTop||0;
-              // 시작점 = mousedown 시점 마우스 위치 (사용자 클릭 자리부터 라인 시작)
               const sx=(connectDrag.origX-rect.left)/zoom+slL;
               const sy=(connectDrag.origY-rect.top)/zoom+slT;
               const tx=(connectDrag.curX-rect.left)/zoom+slL;
               const ty=(connectDrag.curY-rect.top)/zoom+slT;
-              // 짧은 거리는 직선, 멀어지면 L자 꺾인 라인
               const dx=tx-sx,dy=ty-sy;
               const dist=Math.sqrt(dx*dx+dy*dy);
               const path=dist<24?`M ${sx} ${sy} L ${tx} ${ty}`:(()=>{const midX=Math.max(sx+8,tx-8);return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`})();
