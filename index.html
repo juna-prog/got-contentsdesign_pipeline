@@ -648,8 +648,8 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
       {/* Right: chart */}
       <div className="gantt-chart" ref={chartRef}>
         {/* Header with months/weeks */}
-        {/* Header: month row + day/dow row */}
-        <div style={{position:"sticky",top:0,zIndex:5,background:"var(--bg)",width:totalWidth}}>
+        {/* Header: month row + day/dow row (zIndex 10: 막대 핀 z6 + 화살표 z4 위로 노출) */}
+        <div style={{position:"sticky",top:0,zIndex:10,background:"var(--bg)",width:totalWidth}}>
           {/* Month row */}
           <div style={{display:"flex",borderBottom:"1px solid var(--bd)",height:22}}>
             {months.map((m,i)=><div key={i} style={{width:m.days*dayWidth,borderRight:"1px solid var(--bd)",display:"flex",alignItems:"center",paddingLeft:6,flexShrink:0}}>
