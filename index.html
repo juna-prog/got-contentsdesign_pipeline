@@ -810,18 +810,19 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75} style={{pointerEvents:"none"}}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')+(isAdminUser?' (클릭: 삭제)':'')}</title></path>
               </g>;
             })}
-            {/* v22 Track 10: 드래그 중 임시 연결선 (사용자 클릭 위치 → 마우스, body zoom 1.5 보정) */}
+            {/* v22 Track 10: 드래그 중 임시 연결선 (mouse visual pixel, rect 는 CSS pixel 가정) */}
             {connectDrag&&(()=>{
               const rect=chartRef.current?.getBoundingClientRect();
               if(!rect)return null;
-              // body{zoom:1.5} 하드코드 (getComputedStyle 가 'normal'/'' 반환하면 보정 실패하는 케이스 회피)
               const zoom=1.5;
               const slL=chartRef.current.scrollLeft||0;
               const slT=chartRef.current.scrollTop||0;
-              const sx=(connectDrag.origX-rect.left)/zoom+slL;
-              const sy=(connectDrag.origY-rect.top)/zoom+slT;
-              const tx=(connectDrag.curX-rect.left)/zoom+slL;
-              const ty=(connectDrag.curY-rect.top)/zoom+slT;
+              // 사용자 검증: 라인이 마우스보다 오른쪽 아래로 떨어짐 (현재 식 = +rect.left/3 정도 offset)
+              // → rect.left/top 이 CSS pixel(unzoomed) 일 가능성. mouse visual 을 zoom 으로 나눈 후 rect 빼야 일치.
+              const sx=connectDrag.origX/zoom-rect.left+slL;
+              const sy=connectDrag.origY/zoom-rect.top+slT;
+              const tx=connectDrag.curX/zoom-rect.left+slL;
+              const ty=connectDrag.curY/zoom-rect.top+slT;
               const dx=tx-sx,dy=ty-sy;
               const dist=Math.sqrt(dx*dx+dy*dy);
               const path=dist<24?`M ${sx} ${sy} L ${tx} ${ty}`:(()=>{const midX=Math.max(sx+8,tx-8);return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`})();
