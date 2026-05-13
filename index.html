@@ -6,9 +6,9 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
 :root{--bg:#fff;--bg2:#f8f9fb;--bg3:#f1f3f5;--bd:#e5e7eb;--bd2:#d1d5db;--t1:#111827;--t2:#374151;--t3:#6b7280;--t4:#9ca3af;--ac:#2563eb;--ac-bg:#eff6ff;--gn:#059669;--gn-bg:#ecfdf5;--rd:#dc2626;--rd-bg:#fef2f2;--or:#d97706;--or-bg:#fffbeb;--pu:#7c3aed;--pu-bg:#f5f3ff;--r:8px;--sh:0 1px 3px rgba(0,0,0,.06);--sh2:0 4px 12px rgba(0,0,0,.08)}
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Pretendard',-apple-system,sans-serif;background:var(--bg2);color:var(--t1);line-height:1.5;overflow:hidden;height:100vh;zoom:1.5}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Pretendard',-apple-system,sans-serif;background:var(--bg2);color:var(--t1);line-height:1.5;overflow:hidden;height:100vh}
 ::-webkit-scrollbar{height:8px;width:8px}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:var(--t4)}
-.app{display:flex;flex-direction:column;height:calc(100vh / 1.5);max-width:none;margin:0 auto;padding:16px 56px 12px}
+.app{display:flex;flex-direction:column;height:100vh;max-width:none;margin:0 auto;padding:16px 56px 12px}
 .b{display:inline-flex;align-items:center;font-size:12px;padding:3px 10px;border-radius:6px;font-weight:600;white-space:nowrap}
 .b-r{background:var(--rd-bg);color:var(--rd)}.b-o{background:var(--or-bg);color:var(--or)}.b-g{background:var(--gn-bg);color:var(--gn)}.b-p{background:var(--pu-bg);color:var(--pu)}.b-a{background:var(--ac-bg);color:var(--ac)}.b-x{background:var(--bg3);color:var(--t3)}
 .bt{padding:7px 16px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;border:1px solid var(--bd);background:var(--bg);color:var(--t2);transition:all .15s;font-family:inherit}.bt:hover{background:var(--bg3)}.bt.on{background:var(--ac-bg);border-color:var(--ac);color:var(--ac)}
@@ -882,14 +882,11 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
     {connectDrag&&<div style={{position:"fixed",left:connectDrag.curX+12,top:connectDrag.curY+12,zIndex:9998,padding:"4px 10px",background:"#f59e0b",color:"#fff",borderRadius:4,fontSize:11,fontWeight:600,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>
       🔗 #{connectDrag.srcTask.id} → {connectDrag.hoverTargetId?("#"+connectDrag.hoverTargetId+" (드롭하여 연결)"):"후행 작업 위로 드래그"}
     </div>}
-    {/* v22 Track 10: 드래그 중 임시 라인 (fixed overlay, body zoom 1.5 visual 1.5x 보정) */}
+    {/* v22 Track 10: 드래그 중 임시 라인 (fixed overlay, zoom 1.0 = 좌표 그대로 사용) */}
     {connectDrag&&<svg style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",pointerEvents:"none",zIndex:9997}}>
       {(()=>{
-        // body{zoom:1.5} → SVG layout 그대로지만 visual 1.5x. mouse clientX 는 visual pixel.
-        // SVG 내부 좌표에 (clientX/1.5) 넣으면 visual = (clientX/1.5)*1.5 = clientX = 마우스 위치 ✓
-        const Z=1.5;
-        const sx=connectDrag.origX/Z,sy=connectDrag.origY/Z;
-        const tx=connectDrag.curX/Z,ty=connectDrag.curY/Z;
+        const sx=connectDrag.origX,sy=connectDrag.origY;
+        const tx=connectDrag.curX,ty=connectDrag.curY;
         const dx=tx-sx,dy=ty-sy;
         const dist=Math.sqrt(dx*dx+dy*dy);
         const path=dist<24?`M ${sx} ${sy} L ${tx} ${ty}`:(()=>{const midX=Math.max(sx+8,tx-8);return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`})();
@@ -4478,6 +4475,38 @@ function detectPendingScheduleTasks(allTasks){
   return out;
 }
 
+/* v22 Track 9 후속: 부모 task 기준 미정 sub-task grouping (사용자 5/14 피드백) */
+function groupPendingByParent(allTasks,det){
+  const pendingIds=new Set();
+  det.nullSched.forEach(t=>pendingIds.add(t.id));
+  det.holidayOnly.forEach(t=>pendingIds.add(t.id));
+  det.gapAfter.forEach(({task})=>pendingIds.add(task.id));
+  det.placeholderGroup.forEach(g=>g.tasks.forEach(t=>pendingIds.add(t.id)));
+  const allTaskMap=new Map();(allTasks||[]).forEach(t=>allTaskMap.set(t.id,t));
+  // 미정 사유 표기
+  const reasonMap=new Map();
+  det.nullSched.forEach(t=>{const ex=reasonMap.get(t.id);reasonMap.set(t.id,ex?ex+", NULL":"NULL 일정")});
+  det.holidayOnly.forEach(t=>{const ex=reasonMap.get(t.id);reasonMap.set(t.id,ex?ex+", 공휴일":"공휴일/주말")});
+  det.gapAfter.forEach(({task,gap})=>{const ex=reasonMap.get(task.id);reasonMap.set(task.id,ex?ex+", 공백"+gap+"d":"공백 "+gap+"영업일")});
+  det.placeholderGroup.forEach(g=>g.tasks.forEach(t=>{const ex=reasonMap.get(t.id);reasonMap.set(t.id,ex?ex+", 묶음":"묶음 "+g.tasks.length+"건")}));
+  // parent 별 그룹화
+  const groups=new Map();
+  Array.from(pendingIds).forEach(id=>{
+    const t=allTaskMap.get(id);if(!t)return;
+    const pid=t.parent_task_id||0;
+    if(!groups.has(pid))groups.set(pid,{parent:pid?allTaskMap.get(pid):null,pendingTasks:[],parentId:pid,tasks:[]});
+    const g=groups.get(pid);
+    g.pendingTasks.push(t);
+    g.tasks.push(t); // InlineScheduleEditor group 모드 호환 (tasks 키 사용)
+  });
+  // 정렬: parent 있는 그룹 우선, child 수 많은 순
+  return{groups:Array.from(groups.values()).sort((a,b)=>{
+    if(a.parentId&&!b.parentId)return -1;
+    if(!a.parentId&&b.parentId)return 1;
+    return b.pendingTasks.length-a.pendingTasks.length;
+  }),reasonMap};
+}
+
 /* ═══ INLINE SCHEDULE EDITOR (v22 Track 9, AdminPanel pending 탭 인라인 편집) ═══ */
 /* task 단일 또는 group(placeholderGroup) 모드. cascade 영향 미리보기 + 일괄 적용. */
 function InlineScheduleEditor({task,group,allTasks,user,workers,onApplied,onCancel}){
@@ -4632,95 +4661,93 @@ function InlineScheduleEditor({task,group,allTasks,user,workers,onApplied,onCanc
   </div>;
 }
 
-/* ═══ PENDING TAB CONTENT (v22 Track 9, AdminPanel 일정 미정 탭 + 인라인 편집) ═══ */
+/* ═══ PENDING TAB CONTENT (v22 Track 9 + 5/14 부모 기준 grouping) ═══ */
 function PendingTabContent({allTasks,workers,user,onRefresh,onTaskClick}){
-  const[expanded,setExpanded]=useState(null); // 'task:NN' or 'group:parent|start|end'
+  const[expanded,setExpanded]=useState(null); // 'parent:NN' 또는 'orphan:NN'
   const det=useMemo(()=>detectPendingScheduleTasks(allTasks),[allTasks]);
+  const{groups,reasonMap}=useMemo(()=>groupPendingByParent(allTasks,det),[allTasks,det]);
   const wMap={};(workers||[]).forEach(w=>{wMap[w.id]=w});
-  const taskMap={};(allTasks||[]).forEach(t=>{taskMap[t.id]=t});
-  const totalCount=det.nullSched.length+det.holidayOnly.length+det.gapAfter.length+det.placeholderGroup.length;
-  const toggleTask=tid=>setExpanded(p=>p===("task:"+tid)?null:("task:"+tid));
-  const toggleGroup=key=>setExpanded(p=>p===("group:"+key)?null:("group:"+key));
-  const TaskRow=({t,extra})=>{
-    const w=wMap[t.assignee_id];
-    const key="task:"+t.id;
-    const isExp=expanded===key;
-    return<div style={{display:"flex",flexDirection:"column"}}>
-      <div onClick={()=>toggleTask(t.id)} style={{padding:"5px 8px",border:"1px solid "+(isExp?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:11,cursor:"pointer",display:"flex",gap:6,alignItems:"center",background:isExp?"#f5f3ff":"var(--bg)"}}>
-        <span style={{color:isExp?"#7c3aed":"var(--t4)",fontSize:10,fontWeight:700,minWidth:10}}>{isExp?"▼":"▶"}</span>
-        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title_object||t.title}>#{t.id} {t.title_object||t.title}</span>
-        <span style={{color:"var(--t4)",fontSize:10,minWidth:60}}>{w?.name||"미배정"}</span>
-        <span style={{color:"var(--t4)",fontSize:10,minWidth:140,textAlign:"right"}}>{t.start_date||"NULL"} ~ {t.end_date||"NULL"}</span>
-        {extra&&<span style={{color:"var(--rd)",fontSize:10,fontWeight:600}}>{extra}</span>}
-        {onTaskClick&&<button onClick={e=>{e.stopPropagation();onTaskClick(t.id)}} title="우측 상세 패널 열기" style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,padding:"1px 5px",fontSize:9,cursor:"pointer",color:"var(--t3)"}}>📋</button>}
-      </div>
-      {isExp&&<InlineScheduleEditor task={t} allTasks={allTasks} user={user} workers={workers}
-        onApplied={res=>{setExpanded(null);onRefresh&&onRefresh();window.showToast&&window.showToast("✓ "+(res?.count||1)+"건 적용")}}
-        onCancel={()=>setExpanded(null)}/>}
-    </div>;
-  };
-  return<div style={{padding:14,display:"flex",flexDirection:"column",gap:14,height:"100%",overflow:"auto"}}>
-    <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:14,fontWeight:700,color:"var(--t1)"}}>⚠️ 일정 미정 작업 총 {totalCount}건</span>
-      <span style={{fontSize:11,color:"var(--t3)"}}>(A=NULL · B=공휴일/주말 · C=인접 5+영업일 공백 · D=동일 parent 동일 일정 3+)</span>
+  const ACTION_L={design:"기획",implement:"구현",polish:"폴리싱",resource:"리소스",feedback:"피드백",qa:"QA",refine:"수정",verify:"검증"};
+  const totalCount=groups.reduce((s,g)=>s+g.pendingTasks.length,0);
+  const parentGroups=groups.filter(g=>g.parentId);
+  const orphanGroup=groups.find(g=>!g.parentId);
+  const toggleGrp=key=>setExpanded(p=>p===key?null:key);
+  return<div style={{padding:12,display:"flex",flexDirection:"column",gap:10,height:"100%",overflow:"auto"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+      <span style={{fontSize:14,fontWeight:700,color:"var(--t1)"}}>⚠️ 일정 미정 작업 총 {totalCount}건 / 부모 {parentGroups.length}그룹</span>
       <button className="bt bt-s" onClick={onRefresh} style={{marginLeft:"auto"}}>↻ 새로고침</button>
     </div>
-    <div style={{padding:"6px 10px",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:4,fontSize:11,color:"#78350f"}}>
-      💡 행을 클릭하면 인라인 일정 편집기가 열립니다. 패널 닫지 않고 바로 일정 입력 가능. 📋 버튼으로 우측 상세 패널 별도 호출.
+    <div style={{padding:"6px 10px",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:4,fontSize:11,color:"#78350f",flexShrink:0}}>
+      💡 부모 task 기준으로 그룹화. 부모 카드 클릭 → 미정 sub-task 일괄 일정 입력 (동일 / 영업일 분배). 📋 버튼은 우측 상세 패널.
     </div>
-    {/* A. NULL */}
-    <div>
-      <div style={{fontSize:12,fontWeight:700,color:"var(--rd)",marginBottom:6}}>A. NULL 일정 ({det.nullSched.length}건)</div>
-      {det.nullSched.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-      <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        {det.nullSched.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
-        {det.nullSched.length>50&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.nullSched.length-50}건</div>}
-      </div>}
-    </div>
-    {/* B. 공휴일/주말-only */}
-    <div>
-      <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>B. 공휴일/주말 단일 ({det.holidayOnly.length}건)</div>
-      {det.holidayOnly.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-      <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        {det.holidayOnly.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
-      </div>}
-    </div>
-    {/* C. 인접 공백 5+ 영업일 */}
-    <div>
-      <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>C. 동일 워커 인접 task 공백 ≥ 5 영업일 ({det.gapAfter.length}건)</div>
-      {det.gapAfter.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-      <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        {det.gapAfter.slice(0,30).map(({task,prev,gap})=><TaskRow key={"g"+task.id} t={task} extra={"전 task #"+prev.id+" 종료 후 "+gap+"영업일 공백"}/>)}
-        {det.gapAfter.length>30&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.gapAfter.length-30}건</div>}
-      </div>}
-    </div>
-    {/* D. placeholder 묶음 */}
-    <div>
-      <div style={{fontSize:12,fontWeight:700,color:"#7c3aed",marginBottom:6}}>D. placeholder 묶음 (동일 parent + 동일 일정 ≥ 3 child) ({det.placeholderGroup.length}그룹)</div>
-      {det.placeholderGroup.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {det.placeholderGroup.map(g=>{
-          const parent=taskMap[g.parent_id];
-          const gkey=g.parent_id+"|"+g.start+"|"+g.end;
-          const isGExp=expanded===("group:"+gkey);
-          return<div key={gkey} style={{padding:8,border:"1px solid "+(isGExp?"#7c3aed":"#ede9fe"),borderRadius:4,background:"#faf5ff"}}>
-            <div onClick={()=>toggleGroup(gkey)} style={{fontSize:11,fontWeight:600,color:"#5b21b6",marginBottom:isGExp?8:4,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-              <span style={{fontWeight:700}}>{isGExp?"▼":"▶"}</span>
-              <span>부모 #{g.parent_id} {parent?.title_object||parent?.title||"(unknown)"} - 동일 일정 {g.start} ~ {g.end} child {g.tasks.length}건</span>
+    {/* 부모 그룹 카드 */}
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {parentGroups.map(g=>{
+        const p=g.parent;
+        const key="parent:"+g.parentId;
+        const isExp=expanded===key;
+        const pStart=p?.start_date?p.start_date.slice(0,10):null;
+        const pEnd=p?.end_date?p.end_date.slice(0,10):null;
+        const pStatus=p?.status||"-";
+        const pAssignee=p?wMap[p.assignee_id]:null;
+        return<div key={key} style={{border:"1px solid "+(isExp?"#7c3aed":"var(--bd)"),borderRadius:6,background:isExp?"#faf5ff":"var(--bg)"}}>
+          {/* 부모 헤더 (클릭 토글) */}
+          <div onClick={()=>toggleGrp(key)} style={{padding:"8px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,borderBottom:isExp?"1px solid #ede9fe":"none"}}>
+            <span style={{color:isExp?"#7c3aed":"var(--t3)",fontSize:11,fontWeight:700}}>{isExp?"▼":"▶"}</span>
+            <span style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--t1)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={p?.title_object||p?.title}>
+                부모 #{g.parentId} {p?.title_object||p?.title||"(parent task not in cache)"}
+              </div>
+              <div style={{fontSize:10,color:"var(--t3)",marginTop:1}}>
+                {p?<>일정: {pStart||"NULL"} ~ {pEnd||"NULL"} · 상태 {pStatus} · {pAssignee?.name||"미배정"}</>:<span style={{color:"var(--t4)"}}>(부모 정보 없음)</span>}
+              </div>
+            </span>
+            <span style={{padding:"2px 7px",background:"#fef3c7",color:"#92400e",fontSize:10,fontWeight:700,borderRadius:3}}>미정 {g.pendingTasks.length}</span>
+          </div>
+          {/* sub-task 리스트 + 인라인 일괄 편집 */}
+          {isExp&&<div style={{padding:"8px 12px"}}>
+            <div style={{fontSize:11,fontWeight:600,color:"var(--t2)",marginBottom:4}}>미정 sub-task ({g.pendingTasks.length}건)</div>
+            <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:8,maxHeight:200,overflow:"auto",border:"1px solid var(--bd)",borderRadius:3}}>
+              {g.pendingTasks.map(t=>{
+                const w=wMap[t.assignee_id];
+                const reason=reasonMap.get(t.id)||"";
+                return<div key={t.id} style={{padding:"4px 8px",fontSize:10,background:"var(--bg)",borderBottom:"1px solid var(--bg3)",display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title_object||t.title}>
+                    #{t.id} {t.action_verb?<span style={{color:"#7c3aed",fontWeight:600}}>[{ACTION_L[t.action_verb]||t.action_verb}]</span>:""} {t.title_object||t.title}
+                  </span>
+                  <span style={{color:"var(--t4)",minWidth:60}}>{w?.name||"미배정"}</span>
+                  <span style={{color:"var(--t4)",minWidth:120,textAlign:"right"}}>{t.start_date||"NULL"} ~ {t.end_date||"NULL"}</span>
+                  <span style={{color:"var(--rd)",fontWeight:600,minWidth:80,textAlign:"right",fontSize:9}}>{reason}</span>
+                  {onTaskClick&&<button onClick={e=>{e.stopPropagation();onTaskClick(t.id)}} title="우측 상세 패널" style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,padding:"1px 4px",fontSize:9,cursor:"pointer",color:"var(--t3)"}}>📋</button>}
+                </div>;
+              })}
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {g.tasks.map(t=><div key={t.id} style={{padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:3,fontSize:10,background:"var(--bg)",display:"flex",gap:6,alignItems:"center"}}>
-                <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{t.id} {t.title_object||t.title}</span>
-                <span style={{color:"var(--t4)"}}>{wMap[t.assignee_id]?.name||"미배정"}</span>
-              </div>)}
-            </div>
-            {isGExp&&<InlineScheduleEditor group={g} allTasks={allTasks} user={user} workers={workers}
+            <InlineScheduleEditor group={g} allTasks={allTasks} user={user} workers={workers}
               onApplied={res=>{setExpanded(null);onRefresh&&onRefresh();window.showToast&&window.showToast("✓ 그룹 "+(res?.count||0)+"건 적용 ("+res?.mode+")")}}
-              onCancel={()=>setExpanded(null)}/>}
+              onCancel={()=>setExpanded(null)}/>
+          </div>}
+        </div>;
+      })}
+    </div>
+    {/* 고아 그룹 (parent 없는 task) */}
+    {orphanGroup&&orphanGroup.pendingTasks.length>0&&<div style={{border:"1px solid var(--bd)",borderRadius:6,background:"var(--bg)",marginTop:6}}>
+      <div onClick={()=>toggleGrp("orphan:0")} style={{padding:"8px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{color:expanded==="orphan:0"?"#7c3aed":"var(--t3)",fontSize:11,fontWeight:700}}>{expanded==="orphan:0"?"▼":"▶"}</span>
+        <span style={{flex:1,fontSize:12,fontWeight:700,color:"var(--t2)"}}>🔸 부모 없는 미정 task</span>
+        <span style={{padding:"2px 7px",background:"var(--bg3)",color:"var(--t3)",fontSize:10,fontWeight:700,borderRadius:3}}>{orphanGroup.pendingTasks.length}건</span>
+      </div>
+      {expanded==="orphan:0"&&<div style={{padding:"4px 12px 10px"}}>
+        {orphanGroup.pendingTasks.map(t=>{
+          const w=wMap[t.assignee_id];
+          return<div key={t.id} onClick={()=>onTaskClick&&onTaskClick(t.id)} style={{padding:"4px 8px",fontSize:10,border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",marginBottom:3,display:"flex",gap:6,alignItems:"center",cursor:onTaskClick?"pointer":"default"}}>
+            <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{t.id} {t.title_object||t.title}</span>
+            <span style={{color:"var(--t4)",minWidth:60}}>{w?.name||"미배정"}</span>
+            <span style={{color:"var(--t4)"}}>{t.start_date||"NULL"} ~ {t.end_date||"NULL"}</span>
           </div>;
         })}
+        <div style={{fontSize:10,color:"var(--t4)",fontStyle:"italic",marginTop:4}}>※ 부모 없는 단일 task 는 클릭하여 우측 상세 패널에서 개별 처리하세요.</div>
       </div>}
-    </div>
+    </div>}
   </div>;
 }
 
