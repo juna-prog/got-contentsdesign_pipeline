@@ -249,8 +249,8 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
   // Right-click drag scroll for gantt chart (v22 Track 8: task 막대 위에서는 비활성)
   useEffect(()=>{const el=chartRef.current;if(!el)return;
     const onDown=e=>{if(e.button!==0)return;
-      // task 막대 위 클릭 → 막대 드래그 우선, 화면 스크롤 드래그 비활성
-      if(e.target&&e.target.closest&&e.target.closest('.gantt-bar'))return;
+      // task 막대 / 의존성 핀 위 클릭 → 막대 드래그 / 핀 드래그 우선, 화면 스크롤 드래그 비활성
+      if(e.target&&e.target.closest&&e.target.closest('.gantt-bar,.gantt-pin'))return;
       e.preventDefault();ganttDrag.current={x:e.clientX,y:e.clientY,sl:el.scrollLeft,st:el.scrollTop};el.style.cursor="grabbing"};
     const onMove=e=>{if(!ganttDrag.current)return;el.scrollLeft=ganttDrag.current.sl-(e.clientX-ganttDrag.current.x);el.scrollTop=ganttDrag.current.st-(e.clientY-ganttDrag.current.y)};
     const onUp=()=>{if(ganttDrag.current){ganttDrag.current=null;el.style.cursor=""}};
@@ -440,6 +440,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
   const startConnect=(t,e)=>{
     if(!isAdminUser)return;
     e.preventDefault();e.stopPropagation();
+    if(e.nativeEvent&&e.nativeEvent.stopImmediatePropagation)e.nativeEvent.stopImmediatePropagation();
     setConnectDrag({srcTask:t,curX:e.clientX,curY:e.clientY,hoverTargetId:null,origX:e.clientX,origY:e.clientY});
   };
   useEffect(()=>{
@@ -728,7 +729,12 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                   onMouseMove={draggable&&!dragTask?(e=>{const r=e.currentTarget.getBoundingClientRect();const ox=e.clientX-r.left;const w=r.width;if(ox<8||ox>w-8)e.currentTarget.style.cursor='ew-resize';else e.currentTarget.style.cursor='grab'}):undefined}
                   onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}} onMouseLeave={()=>setTip(null)}>
                   {coord.width>60?(isC?"└ ":"")+formatTaskDisplay(t,t.contents):""}</div>
-                {isAdminUser&&!coord.ghost&&!dragTask&&<div title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>}
+                {isAdminUser&&!coord.ghost&&!dragTask&&<>
+                  {/* 좌측 입력 핀 (target 시각 인디케이터, connectDrag 중 hover target 강조) */}
+                  <div className="gantt-pin" title={connectDrag?"여기로 드롭하여 의존성 받기":"입력 (선행 → 본 작업)"} style={{position:"absolute",left:coord.left-9,top:11,width:10,height:10,borderRadius:"50%",background:connectDrag?.hoverTargetId===t.id?"#f59e0b":(connectDrag?"#fbbf24":"#94a3b8"),border:"2px solid #fff",zIndex:6,boxShadow:connectDrag?.hoverTargetId===t.id?"0 0 0 2px #f59e0b,0 0 8px rgba(245,158,11,.6)":"0 0 0 1px #94a3b8",transition:"background .15s,box-shadow .15s"}}/>
+                  {/* 우측 출력 핀 (드래그 시작점) */}
+                  <div className="gantt-pin" title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>
+                </>}
                 {coord.ghost&&<div style={{position:"absolute",left:coord.left,top:-12,fontSize:10,fontWeight:700,color:"#7c3aed",background:"rgba(237,233,254,.95)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5,border:"1px solid #c4b5fd"}}>{dragTask?.curDs} ~ {dragTask?.curDe}</div>}
                 {tver&&coord.width>30&&!coord.ghost&&<span style={{position:"absolute",left:coord.left+coord.width+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
               </div>
@@ -764,7 +770,12 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                     onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}}
                     onMouseLeave={()=>setTip(null)}>
                     {coord.width>60?formatTaskDisplay(t,t.contents):""}</div>
-                  {isAdminUser&&!coord.ghost&&!dragTask&&!t._is_secondary&&<div title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>}
+                  {isAdminUser&&!coord.ghost&&!dragTask&&!t._is_secondary&&<>
+                    {/* 좌측 입력 핀 */}
+                    <div className="gantt-pin" title={connectDrag?"여기로 드롭하여 의존성 받기":"입력 (선행 → 본 작업)"} style={{position:"absolute",left:coord.left-9,top:11,width:10,height:10,borderRadius:"50%",background:connectDrag?.hoverTargetId===t.id?"#f59e0b":(connectDrag?"#fbbf24":"#94a3b8"),border:"2px solid #fff",zIndex:6,boxShadow:connectDrag?.hoverTargetId===t.id?"0 0 0 2px #f59e0b,0 0 8px rgba(245,158,11,.6)":"0 0 0 1px #94a3b8",transition:"background .15s,box-shadow .15s"}}/>
+                    {/* 우측 출력 핀 */}
+                    <div className="gantt-pin" title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>
+                  </>}
                   {coord.ghost&&<div style={{position:"absolute",left:coord.left,top:-12,fontSize:10,fontWeight:700,color:"#7c3aed",background:"rgba(237,233,254,.95)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5,border:"1px solid #c4b5fd"}}>{dragTask?.curDs} ~ {dragTask?.curDe}</div>}
                   {tver&&coord.width>30&&!t._is_secondary&&!coord.ghost&&<span style={{position:"absolute",left:coord.left+coord.width+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
                 </React.Fragment>
