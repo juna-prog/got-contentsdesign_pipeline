@@ -810,27 +810,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75} style={{pointerEvents:"none"}}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')+(isAdminUser?' (클릭: 삭제)':'')}</title></path>
               </g>;
             })}
-            {/* v22 Track 10: 드래그 중 임시 연결선 (mouse visual pixel, rect 는 CSS pixel 가정) */}
-            {connectDrag&&(()=>{
-              const rect=chartRef.current?.getBoundingClientRect();
-              if(!rect)return null;
-              const zoom=1.5;
-              const slL=chartRef.current.scrollLeft||0;
-              const slT=chartRef.current.scrollTop||0;
-              // 사용자 검증: 라인이 마우스보다 오른쪽 아래로 떨어짐 (현재 식 = +rect.left/3 정도 offset)
-              // → rect.left/top 이 CSS pixel(unzoomed) 일 가능성. mouse visual 을 zoom 으로 나눈 후 rect 빼야 일치.
-              const sx=connectDrag.origX/zoom-rect.left+slL;
-              const sy=connectDrag.origY/zoom-rect.top+slT;
-              const tx=connectDrag.curX/zoom-rect.left+slL;
-              const ty=connectDrag.curY/zoom-rect.top+slT;
-              const dx=tx-sx,dy=ty-sy;
-              const dist=Math.sqrt(dx*dx+dy*dy);
-              const path=dist<24?`M ${sx} ${sy} L ${tx} ${ty}`:(()=>{const midX=Math.max(sx+8,tx-8);return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`})();
-              return<g style={{pointerEvents:"none"}}>
-                <path d={path} fill="none" stroke="#f59e0b" strokeWidth={3} strokeDasharray="6 4" opacity={0.95}/>
-                <circle cx={tx} cy={ty} r="6" fill="#f59e0b" opacity={0.6}/>
-              </g>;
-            })()}
+            {/* (v22 Track 10) 임시 연결선은 chart SVG 가 아닌 body-level overlay 로 이동 (좌표 단순화) */}
           </svg>}
         </div>
       </div>
@@ -902,6 +882,19 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
     {connectDrag&&<div style={{position:"fixed",left:connectDrag.curX+12,top:connectDrag.curY+12,zIndex:9998,padding:"4px 10px",background:"#f59e0b",color:"#fff",borderRadius:4,fontSize:11,fontWeight:600,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>
       🔗 #{connectDrag.srcTask.id} → {connectDrag.hoverTargetId?("#"+connectDrag.hoverTargetId+" (드롭하여 연결)"):"후행 작업 위로 드래그"}
     </div>}
+    {/* v22 Track 10: 드래그 중 임시 라인 (fixed overlay SVG, mouse client coord 그대로 사용) */}
+    {connectDrag&&<svg style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",pointerEvents:"none",zIndex:9997}}>
+      {(()=>{
+        const sx=connectDrag.origX,sy=connectDrag.origY,tx=connectDrag.curX,ty=connectDrag.curY;
+        const dx=tx-sx,dy=ty-sy;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        const path=dist<24?`M ${sx} ${sy} L ${tx} ${ty}`:(()=>{const midX=Math.max(sx+8,tx-8);return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`})();
+        return<>
+          <path d={path} fill="none" stroke="#f59e0b" strokeWidth={3} strokeDasharray="6 4" opacity={0.95}/>
+          <circle cx={tx} cy={ty} r="6" fill="#f59e0b" opacity={0.65}/>
+        </>;
+      })()}
+    </svg>}
     {/* v22 Track 8: 드래그 commit → ScheduleRequestModal 자동 열기 (admin = direct_apply / owner = request) */}
     {dragCommit&&(()=>{
       const t=dragCommit.task;
