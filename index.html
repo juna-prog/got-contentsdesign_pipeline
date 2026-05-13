@@ -240,6 +240,11 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
   const[dragTask,setDragTask]=useState(null);
   // dragCommit = {task, mode, newStart, newEnd} → ScheduleRequestModal 호출 트리거
   const[dragCommit,setDragCommit]=useState(null);
+  // v22 Track 10: BP 노드 연결 (의존성 추가/삭제)
+  // connectDrag = {srcTask, curX, curY, hoverTargetId}
+  const[connectDrag,setConnectDrag]=useState(null);
+  // deleteDepDialog = {dep} → 의존성 삭제 confirm
+  const[deleteDepDialog,setDeleteDepDialog]=useState(null);
   const chartRef=useRef(null);const ganttWrapRef=useRef(null);const namesRef=useRef(null);const ganttDrag=useRef(null);
   // Right-click drag scroll for gantt chart (v22 Track 8: task 막대 위에서는 비활성)
   useEffect(()=>{const el=chartRef.current;if(!el)return;
@@ -431,6 +436,46 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
     window.addEventListener('mouseup',onUp);
     return()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)};
   },[dragTask,dayWidth,onTaskClick]);
+  // v22 Track 10: BP 노드 연결 드래그 (의존성 추가)
+  const startConnect=(t,e)=>{
+    if(!isAdminUser)return;
+    e.preventDefault();e.stopPropagation();
+    setConnectDrag({srcTask:t,curX:e.clientX,curY:e.clientY,hoverTargetId:null,origX:e.clientX,origY:e.clientY});
+  };
+  useEffect(()=>{
+    if(!connectDrag)return;
+    const onMove=e=>{
+      const el=document.elementFromPoint(e.clientX,e.clientY);
+      const barEl=el&&el.closest?el.closest('.gantt-bar'):null;
+      let hoverTargetId=null;
+      if(barEl&&barEl.dataset&&barEl.dataset.taskId){
+        const tid=parseInt(barEl.dataset.taskId,10);
+        if(tid&&tid!==connectDrag.srcTask.id)hoverTargetId=tid;
+      }
+      setConnectDrag(p=>p?{...p,curX:e.clientX,curY:e.clientY,hoverTargetId}:null);
+    };
+    const onUp=async e=>{
+      const target=connectDrag.hoverTargetId;
+      const moved=Math.abs(e.clientX-connectDrag.origX)>5||Math.abs(e.clientY-connectDrag.origY)>5;
+      if(target&&moved){
+        // 중복 체크 (이미 같은 방향 의존성 존재 시 차단)
+        const dup=(dependencies||[]).find(d=>d.task_id===target&&d.depends_on_task_id===connectDrag.srcTask.id);
+        if(dup){
+          window.showToast&&window.showToast("⚠ 이미 의존성이 존재함");
+        }else{
+          try{
+            await db.addDep({task_id:target,depends_on_task_id:connectDrag.srcTask.id,dep_type:'finishes_before',notes:'간트 핀 드래그',created_by:'gantt_pin'});
+            onDepRefresh&&onDepRefresh();
+            window.showToast&&window.showToast("✓ 의존성 추가: #"+connectDrag.srcTask.id+" → #"+target);
+          }catch(err){alert("의존성 추가 실패: "+(err.message||err))}
+        }
+      }
+      setConnectDrag(null);
+    };
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+    return()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)};
+  },[connectDrag,dependencies,onDepRefresh]);
   // 막대 렌더 좌표: 드래그 중인 task 는 ghost 위치, 아니면 원래 위치
   const getBarCoords=(t,defaultX1,defaultX2)=>{
     if(dragTask&&dragTask.task.id===t.id){
@@ -677,12 +722,13 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
               const draggable=canDragTask(t);
               return<div key={r._key+"_bar"} className="gantt-row" style={{position:"relative",background:isC?"var(--bg3)":"var(--bg2)"}}>
                 {!isC&&kidCount>0&&<button onClick={()=>setExpT(p=>({...p,[t.id]:!p[t.id]}))} style={{position:"sticky",left:4,top:4,background:"var(--ac)",color:"#fff",border:"none",borderRadius:3,fontSize:9,cursor:"pointer",padding:"1px 5px",zIndex:2,float:"left",marginTop:4}}>{expandedT[t.id]?"▼":"▶"}+{kidCount}</button>}
-                <div className="gantt-bar" style={{left:coord.left,top:6,width:coord.width,background:bc,opacity:coord.ghost?.6:(isC?.55:.85),border:coord.ghost?"2px dashed #7c3aed":(isC?`1px dashed ${bc}`:undefined),height:isC?12:undefined,cursor:barCursor(t),userSelect:"none"}}
+                <div className="gantt-bar" data-task-id={t.id} style={{left:coord.left,top:6,width:coord.width,background:bc,opacity:coord.ghost?.6:(isC?.55:.85),border:coord.ghost?"2px dashed #7c3aed":(isC?`1px dashed ${bc}`:(connectDrag?.hoverTargetId===t.id?"2px solid #f59e0b":undefined)),height:isC?12:undefined,cursor:barCursor(t),userSelect:"none",boxShadow:connectDrag?.hoverTargetId===t.id?"0 0 0 2px rgba(245,158,11,.4)":undefined}}
                   onMouseDown={draggable?(e=>beginDrag(t,e)):undefined}
                   onClick={!draggable?(()=>onTaskClick&&onTaskClick(t.id)):undefined}
                   onMouseMove={draggable&&!dragTask?(e=>{const r=e.currentTarget.getBoundingClientRect();const ox=e.clientX-r.left;const w=r.width;if(ox<8||ox>w-8)e.currentTarget.style.cursor='ew-resize';else e.currentTarget.style.cursor='grab'}):undefined}
                   onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}} onMouseLeave={()=>setTip(null)}>
                   {coord.width>60?(isC?"└ ":"")+formatTaskDisplay(t,t.contents):""}</div>
+                {isAdminUser&&!coord.ghost&&!dragTask&&<div title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>}
                 {coord.ghost&&<div style={{position:"absolute",left:coord.left,top:-12,fontSize:10,fontWeight:700,color:"#7c3aed",background:"rgba(237,233,254,.95)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5,border:"1px solid #c4b5fd"}}>{dragTask?.curDs} ~ {dragTask?.curDe}</div>}
                 {tver&&coord.width>30&&!coord.ghost&&<span style={{position:"absolute",left:coord.left+coord.width+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
               </div>
@@ -710,14 +756,15 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 const coord=getBarCoords(t,x1,x2);
                 const draggable=canDragTask(t);
                 return<React.Fragment key={t.id+(t._is_secondary?'-s':'')}>
-                  <div className="gantt-bar"
-                    style={{left:coord.left,top:6,width:coord.width,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:coord.ghost?"2px dashed #7c3aed":(t._is_secondary?`1px dashed ${bc}`:undefined),opacity:coord.ghost?.6:(t._is_secondary?.65:undefined),cursor:barCursor(t),userSelect:"none"}}
+                  <div className="gantt-bar" data-task-id={t.id}
+                    style={{left:coord.left,top:6,width:coord.width,background:t._is_secondary?`repeating-linear-gradient(135deg,${bc},${bc} 4px,transparent 4px,transparent 8px)`:bc,border:coord.ghost?"2px dashed #7c3aed":(t._is_secondary?`1px dashed ${bc}`:(connectDrag?.hoverTargetId===t.id?"2px solid #f59e0b":undefined)),opacity:coord.ghost?.6:(t._is_secondary?.65:undefined),cursor:barCursor(t),userSelect:"none",boxShadow:connectDrag?.hoverTargetId===t.id?"0 0 0 2px rgba(245,158,11,.4)":undefined}}
                     onMouseDown={draggable?(e=>beginDrag(t,e)):undefined}
                     onClick={!draggable?(()=>onTaskClick&&onTaskClick(t.id)):undefined}
                     onMouseMove={draggable&&!dragTask?(e=>{const r=e.currentTarget.getBoundingClientRect();const ox=e.clientX-r.left;const w2=r.width;if(ox<8||ox>w2-8)e.currentTarget.style.cursor='ew-resize';else e.currentTarget.style.cursor='grab'}):undefined}
                     onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}}
                     onMouseLeave={()=>setTip(null)}>
                     {coord.width>60?formatTaskDisplay(t,t.contents):""}</div>
+                  {isAdminUser&&!coord.ghost&&!dragTask&&!t._is_secondary&&<div title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>}
                   {coord.ghost&&<div style={{position:"absolute",left:coord.left,top:-12,fontSize:10,fontWeight:700,color:"#7c3aed",background:"rgba(237,233,254,.95)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5,border:"1px solid #c4b5fd"}}>{dragTask?.curDs} ~ {dragTask?.curDe}</div>}
                   {tver&&coord.width>30&&!t._is_secondary&&!coord.ghost&&<span style={{position:"absolute",left:coord.left+coord.width+4,top:10,fontSize:9,fontWeight:600,color:"#7c3aed",background:"rgba(237,233,254,.85)",padding:"1px 4px",borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{tver.label}</span>}
                 </React.Fragment>
@@ -725,7 +772,7 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
             </div>
           })}
 
-          {/* Dependency arrows */}
+          {/* Dependency arrows (v22 Track 10: 클릭 가능, 관리자만 삭제 confirm) */}
           {(dependencies||[]).length>0&&<svg style={{position:"absolute",left:0,top:0,width:totalWidth,height:rows.length*rowH,pointerEvents:"none",zIndex:4,overflow:"visible"}}>
             <defs>
               <marker id="arr-same" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
@@ -745,8 +792,27 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
               const ty=tgt.rowIndex*rowH+rowH/2;
               const midX=Math.max(sx+8,tx-8);
               const path=`M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
-              return<path key={d.id} d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')}</title></path>
+              return<g key={d.id}>
+                {/* 두꺼운 invisible hit area */}
+                {isAdminUser&&<path d={path} fill="none" stroke="transparent" strokeWidth={12} style={{pointerEvents:"visiblePainted",cursor:"pointer"}} onClick={()=>setDeleteDepDialog({dep:d,srcTitle:tasks?.find(tt=>tt.id===d.depends_on_task_id)?.title_object||"#"+d.depends_on_task_id,tgtTitle:tasks?.find(tt=>tt.id===d.task_id)?.title_object||"#"+d.task_id})}><title>클릭: 의존성 삭제</title></path>}
+                <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75} style={{pointerEvents:"none"}}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')+(isAdminUser?' (클릭: 삭제)':'')}</title></path>
+              </g>;
             })}
+            {/* v22 Track 10: 드래그 중 임시 연결선 */}
+            {connectDrag&&(()=>{
+              const srcPos=taskPositions[connectDrag.srcTask.id];
+              if(!srcPos)return null;
+              const sx=srcPos.x2;
+              const sy=srcPos.rowIndex*rowH+rowH/2;
+              // chart 영역 기준으로 마우스 위치 변환
+              const rect=chartRef.current?.getBoundingClientRect();
+              if(!rect)return null;
+              const tx=connectDrag.curX-rect.left+chartRef.current.scrollLeft;
+              const ty=connectDrag.curY-rect.top+chartRef.current.scrollTop;
+              const midX=Math.max(sx+8,tx-8);
+              const path=`M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
+              return<path d={path} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 4" opacity={0.85} style={{pointerEvents:"none"}}/>;
+            })()}
           </svg>}
         </div>
       </div>
@@ -785,6 +851,38 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
         {tooltip.task.estimated_days&&<div>소요: {tooltip.task.estimated_days}일</div>}
         {tooltip.task.task_assignees&&tooltip.task.task_assignees.length>1&&<div>담당: {tooltip.task.task_assignees.map(ta=>ta.workers?.name).filter(Boolean).join(', ')}</div>}
       </div>
+    </div>}
+    {/* v22 Track 10: 의존성 삭제 confirm */}
+    {deleteDepDialog&&<div className="modal-bg" onClick={()=>setDeleteDepDialog(null)} style={{zIndex:9999}}>
+      <div className="modal" style={{maxWidth:480,width:"94vw"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h" style={{background:"#dc2626",color:"#fff"}}>🔗 의존성 삭제</div>
+        <div className="modal-b">
+          <div style={{fontSize:12,lineHeight:1.7,marginBottom:8}}>
+            다음 의존성을 삭제할까요?
+            <div style={{padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--bd)",borderRadius:4,marginTop:6,fontSize:11}}>
+              <div><b>{deleteDepDialog.srcTitle}</b></div>
+              <div style={{color:"#2563eb",margin:"3px 0"}}>↓ {deleteDepDialog.dep.dep_type==='finishes_before'?'finishes_before':'starts_together'}</div>
+              <div><b>{deleteDepDialog.tgtTitle}</b></div>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:"var(--t4)",marginTop:6}}>※ 의존성만 끊깁니다. 두 task 자체는 그대로 유지됩니다.</div>
+        </div>
+        <div className="modal-f">
+          <button className="bt" onClick={()=>setDeleteDepDialog(null)}>취소</button>
+          <button className="bt" style={{background:"#dc2626",color:"#fff",borderColor:"#dc2626"}} onClick={async()=>{
+            try{
+              await db.delDep(deleteDepDialog.dep.id);
+              onDepRefresh&&onDepRefresh();
+              window.showToast&&window.showToast("의존성 삭제됨");
+            }catch(err){alert("삭제 실패: "+(err.message||err))}
+            setDeleteDepDialog(null);
+          }}>삭제</button>
+        </div>
+      </div>
+    </div>}
+    {/* v22 Track 10: 드래그 중 floating tooltip */}
+    {connectDrag&&<div style={{position:"fixed",left:connectDrag.curX+12,top:connectDrag.curY+12,zIndex:9998,padding:"4px 10px",background:"#f59e0b",color:"#fff",borderRadius:4,fontSize:11,fontWeight:600,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>
+      🔗 #{connectDrag.srcTask.id} → {connectDrag.hoverTargetId?("#"+connectDrag.hoverTargetId+" (드롭하여 연결)"):"후행 작업 위로 드래그"}
     </div>}
     {/* v22 Track 8: 드래그 commit → ScheduleRequestModal 자동 열기 (admin = direct_apply / owner = request) */}
     {dragCommit&&(()=>{
