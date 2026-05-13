@@ -809,20 +809,26 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75} style={{pointerEvents:"none"}}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')+(isAdminUser?' (클릭: 삭제)':'')}</title></path>
               </g>;
             })}
-            {/* v22 Track 10: 드래그 중 임시 연결선 */}
+            {/* v22 Track 10: 드래그 중 임시 연결선 (마우스 추적, body zoom 1.5 보정) */}
             {connectDrag&&(()=>{
               const srcPos=taskPositions[connectDrag.srcTask.id];
               if(!srcPos)return null;
               const sx=srcPos.x2;
               const sy=srcPos.rowIndex*rowH+rowH/2;
-              // chart 영역 기준으로 마우스 위치 변환
               const rect=chartRef.current?.getBoundingClientRect();
               if(!rect)return null;
-              const tx=connectDrag.curX-rect.left+chartRef.current.scrollLeft;
-              const ty=connectDrag.curY-rect.top+chartRef.current.scrollTop;
+              // body{zoom:1.5}: e.clientX/Y 는 visual pixel (zoomed), rect.left/top 도 visual pixel.
+              // 차이값을 zoom factor 로 나눠야 SVG 내부 unzoomed 좌표와 일치.
+              const zoom=parseFloat(getComputedStyle(document.body).zoom)||1;
+              const tx=(connectDrag.curX-rect.left)/zoom+(chartRef.current.scrollLeft||0);
+              const ty=(connectDrag.curY-rect.top)/zoom+(chartRef.current.scrollTop||0);
               const midX=Math.max(sx+8,tx-8);
               const path=`M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
-              return<path d={path} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 4" opacity={0.85} style={{pointerEvents:"none"}}/>;
+              return<g style={{pointerEvents:"none"}}>
+                <path d={path} fill="none" stroke="#f59e0b" strokeWidth={3} strokeDasharray="6 4" opacity={0.95}/>
+                {/* drop target indicator: 마우스 위치 원형 */}
+                <circle cx={tx} cy={ty} r="6" fill="#f59e0b" opacity={0.6}/>
+              </g>;
             })()}
           </svg>}
         </div>
