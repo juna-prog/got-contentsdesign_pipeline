@@ -447,10 +447,11 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
     if(!connectDrag)return;
     const onMove=e=>{
       const el=document.elementFromPoint(e.clientX,e.clientY);
-      const barEl=el&&el.closest?el.closest('.gantt-bar'):null;
+      // 막대 본체 또는 좌측 입력 핀 (data-task-id 부여) 위 hover 시 drop target 인식
+      const targetEl=el&&el.closest?el.closest('.gantt-bar[data-task-id],.gantt-pin[data-task-id]'):null;
       let hoverTargetId=null;
-      if(barEl&&barEl.dataset&&barEl.dataset.taskId){
-        const tid=parseInt(barEl.dataset.taskId,10);
+      if(targetEl&&targetEl.dataset&&targetEl.dataset.taskId){
+        const tid=parseInt(targetEl.dataset.taskId,10);
         if(tid&&tid!==connectDrag.srcTask.id)hoverTargetId=tid;
       }
       setConnectDrag(p=>p?{...p,curX:e.clientX,curY:e.clientY,hoverTargetId}:null);
@@ -730,8 +731,8 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                   onMouseEnter={e=>{if(!dragTask)setTip({x:e.clientX,y:e.clientY,task:t})}} onMouseLeave={()=>setTip(null)}>
                   {coord.width>60?(isC?"└ ":"")+formatTaskDisplay(t,t.contents):""}</div>
                 {isAdminUser&&!coord.ghost&&!dragTask&&<>
-                  {/* 좌측 입력 핀 (target 시각 인디케이터, connectDrag 중 hover target 강조) */}
-                  <div className="gantt-pin" title={connectDrag?"여기로 드롭하여 의존성 받기":"입력 (선행 → 본 작업)"} style={{position:"absolute",left:coord.left-9,top:11,width:10,height:10,borderRadius:"50%",background:connectDrag?.hoverTargetId===t.id?"#f59e0b":(connectDrag?"#fbbf24":"#94a3b8"),border:"2px solid #fff",zIndex:6,boxShadow:connectDrag?.hoverTargetId===t.id?"0 0 0 2px #f59e0b,0 0 8px rgba(245,158,11,.6)":"0 0 0 1px #94a3b8",transition:"background .15s,box-shadow .15s"}}/>
+                  {/* 좌측 입력 핀 (target 시각 인디케이터, connectDrag 중 hover target 강조, drop target 활성) */}
+                  <div className="gantt-pin" data-task-id={t.id} title={connectDrag?"여기로 드롭하여 의존성 받기":"입력 (선행 → 본 작업)"} style={{position:"absolute",left:coord.left-9,top:11,width:14,height:14,borderRadius:"50%",background:connectDrag?.hoverTargetId===t.id?"#f59e0b":(connectDrag?"#fbbf24":"#94a3b8"),border:"2px solid #fff",zIndex:6,boxShadow:connectDrag?.hoverTargetId===t.id?"0 0 0 3px #f59e0b,0 0 10px rgba(245,158,11,.7)":"0 0 0 1px #94a3b8",transition:"background .15s,box-shadow .15s"}}/>
                   {/* 우측 출력 핀 (드래그 시작점) */}
                   <div className="gantt-pin" title="드래그하여 후행 작업으로 의존성 연결" onMouseDown={e=>startConnect(t,e)} style={{position:"absolute",left:coord.left+coord.width-1,top:11,width:10,height:10,borderRadius:"50%",background:"#2563eb",border:"2px solid #fff",cursor:"crosshair",zIndex:6,boxShadow:"0 0 0 1px #2563eb"}}/>
                 </>}
@@ -809,24 +810,24 @@ function GanttView({tasks,workers,milestones,parts,contents,versions,dependencie
                 <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={isFB?undefined:"4 3"} markerEnd={`url(#${marker})`} opacity={0.75} style={{pointerEvents:"none"}}><title>{(isFB?'finishes_before':'starts_together')+(cross?' (크로스 파트)':'')+(d.notes?' - '+d.notes:'')+(isAdminUser?' (클릭: 삭제)':'')}</title></path>
               </g>;
             })}
-            {/* v22 Track 10: 드래그 중 임시 연결선 (마우스 추적, body zoom 1.5 보정) */}
+            {/* v22 Track 10: 드래그 중 임시 연결선 (사용자 클릭 위치 → 현재 마우스 위치, body zoom 보정) */}
             {connectDrag&&(()=>{
-              const srcPos=taskPositions[connectDrag.srcTask.id];
-              if(!srcPos)return null;
-              const sx=srcPos.x2;
-              const sy=srcPos.rowIndex*rowH+rowH/2;
               const rect=chartRef.current?.getBoundingClientRect();
               if(!rect)return null;
-              // body{zoom:1.5}: e.clientX/Y 는 visual pixel (zoomed), rect.left/top 도 visual pixel.
-              // 차이값을 zoom factor 로 나눠야 SVG 내부 unzoomed 좌표와 일치.
               const zoom=parseFloat(getComputedStyle(document.body).zoom)||1;
-              const tx=(connectDrag.curX-rect.left)/zoom+(chartRef.current.scrollLeft||0);
-              const ty=(connectDrag.curY-rect.top)/zoom+(chartRef.current.scrollTop||0);
-              const midX=Math.max(sx+8,tx-8);
-              const path=`M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
+              const slL=chartRef.current.scrollLeft||0;
+              const slT=chartRef.current.scrollTop||0;
+              // 시작점 = mousedown 시점 마우스 위치 (사용자 클릭 자리부터 라인 시작)
+              const sx=(connectDrag.origX-rect.left)/zoom+slL;
+              const sy=(connectDrag.origY-rect.top)/zoom+slT;
+              const tx=(connectDrag.curX-rect.left)/zoom+slL;
+              const ty=(connectDrag.curY-rect.top)/zoom+slT;
+              // 짧은 거리는 직선, 멀어지면 L자 꺾인 라인
+              const dx=tx-sx,dy=ty-sy;
+              const dist=Math.sqrt(dx*dx+dy*dy);
+              const path=dist<24?`M ${sx} ${sy} L ${tx} ${ty}`:(()=>{const midX=Math.max(sx+8,tx-8);return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`})();
               return<g style={{pointerEvents:"none"}}>
                 <path d={path} fill="none" stroke="#f59e0b" strokeWidth={3} strokeDasharray="6 4" opacity={0.95}/>
-                {/* drop target indicator: 마우스 위치 원형 */}
                 <circle cx={tx} cy={ty} r="6" fill="#f59e0b" opacity={0.6}/>
               </g>;
             })()}
