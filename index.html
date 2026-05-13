@@ -3155,76 +3155,8 @@ function AdminPanel({user,workers:initialWorkers,tasks,allTasks,onClose,onDone,o
         })()}
       </div>}
 
-      {/* ━━ Tab 6: 일정 미정 (v22 Track 7) ━━ */}
-      {tab==="pending"&&(()=>{
-        const det=detectPendingScheduleTasks(allTasks);
-        const wMap={};(workers||[]).forEach(w=>{wMap[w.id]=w});
-        const taskMap={};(allTasks||[]).forEach(t=>{taskMap[t.id]=t});
-        const totalCount=det.nullSched.length+det.holidayOnly.length+det.gapAfter.length+det.placeholderGroup.length;
-        const TaskRow=({t,extra})=>{
-          const w=wMap[t.assignee_id];
-          return<div onClick={()=>onTaskClick&&onTaskClick(t.id)} style={{padding:"5px 8px",border:"1px solid var(--bd)",borderRadius:4,fontSize:11,cursor:onTaskClick?"pointer":"default",display:"flex",gap:6,alignItems:"center",background:"var(--bg)"}}>
-            <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title_object||t.title}>#{t.id} {t.title_object||t.title}</span>
-            <span style={{color:"var(--t4)",fontSize:10,minWidth:60}}>{w?.name||"미배정"}</span>
-            <span style={{color:"var(--t4)",fontSize:10,minWidth:140,textAlign:"right"}}>{t.start_date||"NULL"} ~ {t.end_date||"NULL"}</span>
-            {extra&&<span style={{color:"var(--rd)",fontSize:10,fontWeight:600}}>{extra}</span>}
-          </div>;
-        };
-        return<div style={{padding:14,display:"flex",flexDirection:"column",gap:14,height:"100%",overflow:"auto"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:14,fontWeight:700,color:"var(--t1)"}}>⚠️ 일정 미정 작업 총 {totalCount}건</span>
-            <span style={{fontSize:11,color:"var(--t3)"}}>(A=NULL · B=공휴일/주말 · C=인접 5+영업일 공백 · D=동일 parent 동일 일정 3+)</span>
-            <button className="bt bt-s" onClick={onRefresh} style={{marginLeft:"auto"}}>↻ 새로고침</button>
-          </div>
-          {/* A. NULL */}
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"var(--rd)",marginBottom:6}}>A. NULL 일정 ({det.nullSched.length}건)</div>
-            {det.nullSched.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {det.nullSched.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
-              {det.nullSched.length>50&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.nullSched.length-50}건</div>}
-            </div>}
-          </div>
-          {/* B. 공휴일/주말-only */}
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>B. 공휴일/주말 단일 ({det.holidayOnly.length}건)</div>
-            {det.holidayOnly.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {det.holidayOnly.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
-            </div>}
-          </div>
-          {/* C. 인접 공백 5+ 영업일 */}
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>C. 동일 워커 인접 task 공백 ≥ 5 영업일 ({det.gapAfter.length}건)</div>
-            {det.gapAfter.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {det.gapAfter.slice(0,30).map(({task,prev,gap})=><TaskRow key={"g"+task.id} t={task} extra={"전 task #"+prev.id+" 종료 후 "+gap+"영업일 공백"}/>)}
-              {det.gapAfter.length>30&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.gapAfter.length-30}건</div>}
-            </div>}
-          </div>
-          {/* D. 동일 parent 동일 일정 3+ */}
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#7c3aed",marginBottom:6}}>D. placeholder 묶음 (동일 parent + 동일 일정 ≥ 3 child) ({det.placeholderGroup.length}그룹)</div>
-            {det.placeholderGroup.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {det.placeholderGroup.map(g=>{
-                const parent=taskMap[g.parent_id];
-                return<div key={g.parent_id+g.start+g.end} style={{padding:8,border:"1px solid #ede9fe",borderRadius:4,background:"#faf5ff"}}>
-                  <div style={{fontSize:11,fontWeight:600,color:"#5b21b6",marginBottom:4}}>
-                    부모 #{g.parent_id} {parent?.title_object||parent?.title||"(unknown)"} - 동일 일정 {g.start} ~ {g.end} child {g.tasks.length}건
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                    {g.tasks.map(t=><TaskRow key={t.id} t={t}/>)}
-                  </div>
-                </div>;
-              })}
-            </div>}
-          </div>
-          <div style={{fontSize:10,color:"var(--t4)",fontStyle:"italic",borderTop:"1px solid var(--bd)",paddingTop:8}}>
-            클릭 시 우측 상세 패널이 열립니다. 패널의 ⚡/📅 버튼으로 일정 입력/조정 가능.
-          </div>
-        </div>;
-      })()}
+      {/* ━━ Tab 6: 일정 미정 (v22 Track 7 + Track 9 인라인 편집) ━━ */}
+      {tab==="pending"&&<PendingTabContent allTasks={allTasks} workers={workers} user={user} onRefresh={onRefresh} onTaskClick={onTaskClick}/>}
 
       {/* ━━ Tab 7: 확장 슬롯 ━━ */}
       {tab==="ext"&&<div style={{padding:30,textAlign:"center"}}>
@@ -4544,6 +4476,252 @@ function detectPendingScheduleTasks(allTasks){
     if(arr.length>=3)out.placeholderGroup.push({parent_id:arr[0].parent_task_id,start:arr[0].start_date.slice(0,10),end:arr[0].end_date.slice(0,10),tasks:arr});
   });
   return out;
+}
+
+/* ═══ INLINE SCHEDULE EDITOR (v22 Track 9, AdminPanel pending 탭 인라인 편집) ═══ */
+/* task 단일 또는 group(placeholderGroup) 모드. cascade 영향 미리보기 + 일괄 적용. */
+function InlineScheduleEditor({task,group,allTasks,user,workers,onApplied,onCancel}){
+  const isGroup=!!group;
+  // 그룹 모드: 그룹 child 들의 새 일정 입력. 모드 = uniform (전체 동일) / distribute (영업일 분배)
+  const[mode,setMode]=useState("uniform");
+  // 단일/그룹 공통 입력
+  const initS=task?(task.start_date?task.start_date.slice(0,10):""):(group?.start||"");
+  const initE=task?(task.end_date?task.end_date.slice(0,10):""):(group?.end||"");
+  const[ds,setDs]=useState(initS);
+  const[de,setDe]=useState(initE);
+  const[reason,setReason]=useState("");
+  const[cascadeChecked,setCascadeChecked]=useState(true);
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState(null);
+  // cascade 영향 (단일 task 모드)
+  const affected=useMemo(()=>{
+    if(isGroup||!task||!ds||!de||!task.start_date||!task.end_date)return[];
+    return computeAffectedTasks(task,task.start_date.slice(0,10),task.end_date.slice(0,10),ds,de,allTasks||[]);
+  },[task,ds,de,allTasks,isGroup]);
+  // 그룹 분배 미리보기 (distribute 모드 시 child 별 일정 계산)
+  const distributePreview=useMemo(()=>{
+    if(!isGroup||mode!=="distribute"||!ds||!de)return[];
+    const children=group.tasks;
+    const totalDays=businessDaysDiff(ds,de)+1;
+    if(totalDays<children.length){return[]} // 분배 불가
+    const perChild=Math.floor(totalDays/children.length);
+    const out=[];
+    let curStart=ds;
+    children.forEach((t,i)=>{
+      const days=i===children.length-1?(totalDays-perChild*(children.length-1)):perChild;
+      let curEnd=addBusinessDays(curStart,days-1);
+      out.push({task:t,start:curStart,end:curEnd,days});
+      curStart=addBusinessDays(curEnd,1);
+    });
+    return out;
+  },[isGroup,mode,ds,de,group]);
+  const submit=async()=>{
+    if(!ds||!de){setErr("시작/종료일 입력 필수");return}
+    if(de<ds){setErr("종료일이 시작일보다 빠를 수 없음");return}
+    if(!reason.trim()){setErr("적용 사유 입력 필수");return}
+    setSaving(true);setErr(null);
+    try{
+      const reasonText=reason.trim();
+      if(isGroup){
+        // 그룹 모드: 모든 child 에 적용
+        const targets=mode==="distribute"?distributePreview:group.tasks.map(t=>({task:t,start:ds,end:de}));
+        if(mode==="distribute"&&targets.length===0){setErr("영업일 부족 (child 수보다 적은 영업일)");setSaving(false);return}
+        for(const item of targets){
+          const oldS=item.task.start_date?item.task.start_date.slice(0,10):null;
+          const oldE=item.task.end_date?item.task.end_date.slice(0,10):null;
+          await db.updTask(item.task.id,{start_date:item.start,end_date:item.end,updated_at:new Date().toISOString()});
+          if(oldS!==item.start){
+            await db.addChange({content_id:item.task.content_id||null,task_id:item.task.id,field:"start_date",old_value:oldS||"-",new_value:item.start,reason:reasonText+" (그룹 일괄 "+mode+")",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+          }
+          if(oldE!==item.end){
+            await db.addChange({content_id:item.task.content_id||null,task_id:item.task.id,field:"end_date",old_value:oldE||"-",new_value:item.end,reason:reasonText+" (그룹 일괄 "+mode+")",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+          }
+        }
+        onApplied&&onApplied({count:targets.length,mode});
+      }else{
+        // 단일 task 모드: 일정 PATCH + schedule_changes + cascade
+        const curStart=task.start_date?task.start_date.slice(0,10):"";
+        const curEnd=task.end_date?task.end_date.slice(0,10):"";
+        const triggerPatch={updated_at:new Date().toISOString()};
+        if(ds!==curStart)triggerPatch.start_date=ds;
+        if(de!==curEnd)triggerPatch.end_date=de;
+        await db.updTask(task.id,triggerPatch);
+        if(ds!==curStart){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"start_date",old_value:curStart||"-",new_value:ds,reason:reasonText+" (AdminPanel 인라인)",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        if(de!==curEnd){
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"end_date",old_value:curEnd||"-",new_value:de,reason:reasonText+" (AdminPanel 인라인)",changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        // cascade
+        let cascadeApplied=0;
+        if(cascadeChecked&&affected.length>0){
+          for(const a of affected){
+            const aTask=(allTasks||[]).find(t=>t.id===a.task_id);
+            if(!aTask)continue;
+            const aOldStart=aTask.start_date?aTask.start_date.slice(0,10):null;
+            const aOldEnd=aTask.end_date?aTask.end_date.slice(0,10):null;
+            await db.updTask(a.task_id,{start_date:a.proposed_start,end_date:a.proposed_end,updated_at:new Date().toISOString()});
+            if(aOldStart!==a.proposed_start){
+              await db.addChange({content_id:aTask.content_id||null,task_id:a.task_id,field:"start_date",old_value:aOldStart||"-",new_value:a.proposed_start,reason:"인라인 cascade: "+reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+            }
+            if(aOldEnd!==a.proposed_end){
+              await db.addChange({content_id:aTask.content_id||null,task_id:a.task_id,field:"end_date",old_value:aOldEnd||"-",new_value:a.proposed_end,reason:"인라인 cascade: "+reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+            }
+            cascadeApplied++;
+          }
+        }
+        onApplied&&onApplied({count:1+cascadeApplied});
+      }
+    }catch(e){setErr("적용 실패: "+(e.message||e));setSaving(false)}
+  };
+  return<div style={{padding:"10px 12px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,marginTop:4,marginBottom:4}}>
+    {isGroup&&<div style={{display:"flex",gap:8,marginBottom:8,fontSize:11}}>
+      <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
+        <input type="radio" checked={mode==="uniform"} onChange={()=>setMode("uniform")}/>
+        <span>일괄 동일 일정 (전체 child 동일)</span>
+      </label>
+      <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
+        <input type="radio" checked={mode==="distribute"} onChange={()=>setMode("distribute")}/>
+        <span>영업일 분배 (child 별 순차)</span>
+      </label>
+    </div>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 100px",gap:8,marginBottom:8,alignItems:"end"}}>
+      <div>
+        <div style={{fontSize:10,color:"var(--t3)",marginBottom:2}}>{isGroup&&mode==="distribute"?"분배 시작":"시작일"} *</div>
+        <input type="date" value={ds} onChange={e=>setDs(e.target.value)} style={{width:"100%",padding:"4px 6px",fontSize:12,border:"1px solid var(--bd)",borderRadius:3}}/>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:"var(--t3)",marginBottom:2}}>{isGroup&&mode==="distribute"?"분배 종료":"종료일"} *</div>
+        <input type="date" value={de} onChange={e=>setDe(e.target.value)} style={{width:"100%",padding:"4px 6px",fontSize:12,border:"1px solid var(--bd)",borderRadius:3}}/>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:"var(--t3)",marginBottom:2}}>사유 *</div>
+        <input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="예: 일정 확정" style={{width:"100%",padding:"4px 6px",fontSize:12,border:"1px solid var(--bd)",borderRadius:3,fontFamily:"inherit"}}/>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button className="bt bt-s" onClick={onCancel} disabled={saving} style={{flex:1}}>취소</button>
+        <button className="bt bt-s" onClick={submit} disabled={saving||!ds||!de||!reason.trim()} style={{flex:1,background:"#7c3aed",color:"#fff",borderColor:"#7c3aed"}}>{saving?"적용...":"적용"}</button>
+      </div>
+    </div>
+    {!isGroup&&<label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,cursor:"pointer",color:"var(--t3)"}}>
+      <input type="checkbox" checked={cascadeChecked} onChange={e=>setCascadeChecked(e.target.checked)} disabled={affected.length===0}/>
+      <span>영향 받는 task {affected.length}건 cascade 자동 조정 {affected.length===0&&<span style={{color:"var(--t4)"}}>(해당 없음)</span>}</span>
+    </label>}
+    {!isGroup&&affected.length>0&&<div style={{marginTop:6,maxHeight:120,overflow:"auto",fontSize:10,border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)"}}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead style={{background:"var(--bg2)",position:"sticky",top:0}}>
+          <tr><th style={{textAlign:"left",padding:"3px 5px"}}>유형</th><th style={{textAlign:"left",padding:"3px 5px"}}>#</th><th style={{textAlign:"left",padding:"3px 5px"}}>제목</th><th style={{textAlign:"left",padding:"3px 5px"}}>제안</th></tr>
+        </thead>
+        <tbody>
+          {affected.map(a=><tr key={a.task_id}><td style={{padding:"3px 5px"}}>{a.cascade_reason==='sub_task'?'Sub':a.cascade_reason==='parent_expand'?'부모':'워커'}</td><td style={{padding:"3px 5px"}}>{a.task_id}</td><td style={{padding:"3px 5px",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.title}</td><td style={{padding:"3px 5px",color:"var(--ac)"}}>{a.proposed_start}~{a.proposed_end}</td></tr>)}
+        </tbody>
+      </table>
+    </div>}
+    {isGroup&&mode==="distribute"&&distributePreview.length>0&&<div style={{marginTop:6,maxHeight:120,overflow:"auto",fontSize:10,border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)"}}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead style={{background:"var(--bg2)",position:"sticky",top:0}}>
+          <tr><th style={{textAlign:"left",padding:"3px 5px"}}>#</th><th style={{textAlign:"left",padding:"3px 5px"}}>제목</th><th style={{textAlign:"left",padding:"3px 5px"}}>일정</th><th style={{textAlign:"left",padding:"3px 5px"}}>일수</th></tr>
+        </thead>
+        <tbody>
+          {distributePreview.map(item=><tr key={item.task.id}><td style={{padding:"3px 5px"}}>{item.task.id}</td><td style={{padding:"3px 5px",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.task.title_object||item.task.title}</td><td style={{padding:"3px 5px",color:"var(--ac)"}}>{item.start}~{item.end}</td><td style={{padding:"3px 5px"}}>{item.days}일</td></tr>)}
+        </tbody>
+      </table>
+    </div>}
+    {isGroup&&mode==="distribute"&&distributePreview.length===0&&ds&&de&&<div style={{marginTop:6,fontSize:11,color:"#dc2626"}}>⚠ 영업일 부족: 분배 가능한 영업일이 child 수({group.tasks.length}) 보다 적습니다.</div>}
+    {err&&<div style={{marginTop:6,padding:"4px 8px",background:"var(--rd-bg)",color:"var(--rd)",borderRadius:3,fontSize:11}}>{err}</div>}
+  </div>;
+}
+
+/* ═══ PENDING TAB CONTENT (v22 Track 9, AdminPanel 일정 미정 탭 + 인라인 편집) ═══ */
+function PendingTabContent({allTasks,workers,user,onRefresh,onTaskClick}){
+  const[expanded,setExpanded]=useState(null); // 'task:NN' or 'group:parent|start|end'
+  const det=useMemo(()=>detectPendingScheduleTasks(allTasks),[allTasks]);
+  const wMap={};(workers||[]).forEach(w=>{wMap[w.id]=w});
+  const taskMap={};(allTasks||[]).forEach(t=>{taskMap[t.id]=t});
+  const totalCount=det.nullSched.length+det.holidayOnly.length+det.gapAfter.length+det.placeholderGroup.length;
+  const toggleTask=tid=>setExpanded(p=>p===("task:"+tid)?null:("task:"+tid));
+  const toggleGroup=key=>setExpanded(p=>p===("group:"+key)?null:("group:"+key));
+  const TaskRow=({t,extra})=>{
+    const w=wMap[t.assignee_id];
+    const key="task:"+t.id;
+    const isExp=expanded===key;
+    return<div style={{display:"flex",flexDirection:"column"}}>
+      <div onClick={()=>toggleTask(t.id)} style={{padding:"5px 8px",border:"1px solid "+(isExp?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:11,cursor:"pointer",display:"flex",gap:6,alignItems:"center",background:isExp?"#f5f3ff":"var(--bg)"}}>
+        <span style={{color:isExp?"#7c3aed":"var(--t4)",fontSize:10,fontWeight:700,minWidth:10}}>{isExp?"▼":"▶"}</span>
+        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.title_object||t.title}>#{t.id} {t.title_object||t.title}</span>
+        <span style={{color:"var(--t4)",fontSize:10,minWidth:60}}>{w?.name||"미배정"}</span>
+        <span style={{color:"var(--t4)",fontSize:10,minWidth:140,textAlign:"right"}}>{t.start_date||"NULL"} ~ {t.end_date||"NULL"}</span>
+        {extra&&<span style={{color:"var(--rd)",fontSize:10,fontWeight:600}}>{extra}</span>}
+        {onTaskClick&&<button onClick={e=>{e.stopPropagation();onTaskClick(t.id)}} title="우측 상세 패널 열기" style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,padding:"1px 5px",fontSize:9,cursor:"pointer",color:"var(--t3)"}}>📋</button>}
+      </div>
+      {isExp&&<InlineScheduleEditor task={t} allTasks={allTasks} user={user} workers={workers}
+        onApplied={res=>{setExpanded(null);onRefresh&&onRefresh();window.showToast&&window.showToast("✓ "+(res?.count||1)+"건 적용")}}
+        onCancel={()=>setExpanded(null)}/>}
+    </div>;
+  };
+  return<div style={{padding:14,display:"flex",flexDirection:"column",gap:14,height:"100%",overflow:"auto"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:14,fontWeight:700,color:"var(--t1)"}}>⚠️ 일정 미정 작업 총 {totalCount}건</span>
+      <span style={{fontSize:11,color:"var(--t3)"}}>(A=NULL · B=공휴일/주말 · C=인접 5+영업일 공백 · D=동일 parent 동일 일정 3+)</span>
+      <button className="bt bt-s" onClick={onRefresh} style={{marginLeft:"auto"}}>↻ 새로고침</button>
+    </div>
+    <div style={{padding:"6px 10px",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:4,fontSize:11,color:"#78350f"}}>
+      💡 행을 클릭하면 인라인 일정 편집기가 열립니다. 패널 닫지 않고 바로 일정 입력 가능. 📋 버튼으로 우측 상세 패널 별도 호출.
+    </div>
+    {/* A. NULL */}
+    <div>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--rd)",marginBottom:6}}>A. NULL 일정 ({det.nullSched.length}건)</div>
+      {det.nullSched.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        {det.nullSched.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
+        {det.nullSched.length>50&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.nullSched.length-50}건</div>}
+      </div>}
+    </div>
+    {/* B. 공휴일/주말-only */}
+    <div>
+      <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>B. 공휴일/주말 단일 ({det.holidayOnly.length}건)</div>
+      {det.holidayOnly.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        {det.holidayOnly.slice(0,50).map(t=><TaskRow key={t.id} t={t}/>)}
+      </div>}
+    </div>
+    {/* C. 인접 공백 5+ 영업일 */}
+    <div>
+      <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>C. 동일 워커 인접 task 공백 ≥ 5 영업일 ({det.gapAfter.length}건)</div>
+      {det.gapAfter.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        {det.gapAfter.slice(0,30).map(({task,prev,gap})=><TaskRow key={"g"+task.id} t={task} extra={"전 task #"+prev.id+" 종료 후 "+gap+"영업일 공백"}/>)}
+        {det.gapAfter.length>30&&<div style={{fontSize:10,color:"var(--t4)"}}>외 {det.gapAfter.length-30}건</div>}
+      </div>}
+    </div>
+    {/* D. placeholder 묶음 */}
+    <div>
+      <div style={{fontSize:12,fontWeight:700,color:"#7c3aed",marginBottom:6}}>D. placeholder 묶음 (동일 parent + 동일 일정 ≥ 3 child) ({det.placeholderGroup.length}그룹)</div>
+      {det.placeholderGroup.length===0?<div style={{fontSize:11,color:"var(--t4)",fontStyle:"italic"}}>없음</div>:
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {det.placeholderGroup.map(g=>{
+          const parent=taskMap[g.parent_id];
+          const gkey=g.parent_id+"|"+g.start+"|"+g.end;
+          const isGExp=expanded===("group:"+gkey);
+          return<div key={gkey} style={{padding:8,border:"1px solid "+(isGExp?"#7c3aed":"#ede9fe"),borderRadius:4,background:"#faf5ff"}}>
+            <div onClick={()=>toggleGroup(gkey)} style={{fontSize:11,fontWeight:600,color:"#5b21b6",marginBottom:isGExp?8:4,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontWeight:700}}>{isGExp?"▼":"▶"}</span>
+              <span>부모 #{g.parent_id} {parent?.title_object||parent?.title||"(unknown)"} - 동일 일정 {g.start} ~ {g.end} child {g.tasks.length}건</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {g.tasks.map(t=><div key={t.id} style={{padding:"4px 8px",border:"1px solid var(--bd)",borderRadius:3,fontSize:10,background:"var(--bg)",display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{t.id} {t.title_object||t.title}</span>
+                <span style={{color:"var(--t4)"}}>{wMap[t.assignee_id]?.name||"미배정"}</span>
+              </div>)}
+            </div>
+            {isGExp&&<InlineScheduleEditor group={g} allTasks={allTasks} user={user} workers={workers}
+              onApplied={res=>{setExpanded(null);onRefresh&&onRefresh();window.showToast&&window.showToast("✓ 그룹 "+(res?.count||0)+"건 적용 ("+res?.mode+")")}}
+              onCancel={()=>setExpanded(null)}/>}
+          </div>;
+        })}
+      </div>}
+    </div>
+  </div>;
 }
 
 /* ═══ SCHEDULE CHANGE REQUEST / DIRECT EDIT MODAL (v21 일정 조정) ═══ */
