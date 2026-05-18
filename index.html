@@ -3921,6 +3921,8 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const[showNewSub,setShowNewSub]=useState(false);
   const[showDelete,setShowDelete]=useState(false);
   const[showConnectJira,setShowConnectJira]=useState(false);
+  // v22 Track A-7: 인라인 담당자 편집
+  const[assigneeEdit,setAssigneeEdit]=useState(null); // null | {newId, reason, saving, err}
   useEffect(()=>{
     if(!task){setHistory([]);return}
     setHistLoading(true);
@@ -3953,9 +3955,30 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
   const canDelete=isAdmin&&!isDone;
   // v22 Track A-4: 기존 task JIRA 일감 연결 = jira_url 없을 때 + 관리자 또는 본인 owner
   const canConnectJira=!task.jira_url&&(isAdmin||isMyTask)&&!isDone;
+  // v22 Track A-7: 담당자 변경 권한 = 관리자 또는 본인 owner (위임 시나리오)
+  const canChangeAssignee=(isAdmin||isMyTask)&&!isDone;
+  // 활성 워커 정렬 (NewSubTaskModal 동일 패턴)
+  const assigneeWorkers=useMemo(()=>(workers||[]).filter(w=>w.is_active!==false).sort((a,b)=>(a.part_id||'').localeCompare(b.part_id||'')||(a.name||'').localeCompare(b.name||'')),[workers]);
+  const applyAssignee=async()=>{
+    if(!assigneeEdit)return;
+    const newId=assigneeEdit.newId;
+    if(!newId||newId===task.assignee_id){setAssigneeEdit({...assigneeEdit,err:"변경된 담당자 없음"});return}
+    if(!assigneeEdit.reason||!assigneeEdit.reason.trim()){setAssigneeEdit({...assigneeEdit,err:"변경 사유 입력 필수"});return}
+    setAssigneeEdit({...assigneeEdit,saving:true,err:null});
+    try{
+      const oldName=assignee.name||"미배정";
+      const newWorker=assigneeWorkers.find(w=>w.id===newId);
+      const newName=newWorker?.name||"#"+newId;
+      await db.updTask(task.id,{assignee_id:newId,updated_at:new Date().toISOString()});
+      await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"assignee_id",old_value:oldName,new_value:newName,reason:assigneeEdit.reason.trim(),changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+      window.showToast&&window.showToast("✓ 담당자 변경: "+oldName+" → "+newName);
+      setAssigneeEdit(null);
+      onRefresh&&onRefresh(task.id);
+    }catch(e){setAssigneeEdit({...assigneeEdit,err:"적용 실패: "+(e.message||e),saving:false})}
+  };
   const STATUS_L={waiting:"대기",progress:"진행 중",done:"완료",blocked:"차단"};
   const STATUS_C={waiting:"#6b7280",progress:"#0891b2",done:"#059669",blocked:"#dc2626"};
-  const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트"};
+  const fmtField={start_date:"시작일",end_date:"종료일",status:"상태",version_id:"버전",gate:"게이트",assignee_id:"담당자",title:"제목",notes:"내용",jira_url:"JIRA URL",insert:"등록",delete:"삭제"};
   const jiraKey=(()=>{const m=String(task.jira_url||'').match(/([A-Z]+-\d+)/);return m?m[1]:null})();
   return<>
     {/* v22 Track 8 사용성 후속: 분할 레이아웃 (메인 2/3 + 패널 1/3). fixed overlay 폐기 */}
@@ -3973,7 +3996,23 @@ function TaskDetailPanel({taskId,allTasks,workers,contents,user,onClose,onRefres
           <div style={{color:"var(--t4)"}}>상태</div>
           <div><span style={{padding:"2px 8px",borderRadius:3,background:STATUS_C[task.status]+"22",color:STATUS_C[task.status],fontWeight:600,fontSize:11}}>{STATUS_L[task.status]||task.status}</span></div>
           <div style={{color:"var(--t4)"}}>담당자</div>
-          <div style={{fontWeight:600}}>{assignee.name}</div>
+          <div style={{fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+            <span>{assignee.name}</span>
+            {canChangeAssignee&&!assigneeEdit&&<button onClick={()=>setAssigneeEdit({newId:task.assignee_id,reason:"",saving:false,err:null})} title="담당자 변경" style={{background:"none",border:"1px solid var(--bd)",borderRadius:3,padding:"1px 5px",fontSize:10,cursor:"pointer",color:"var(--t3)"}}>✏️</button>}
+          </div>
+          {assigneeEdit&&<><div></div><div style={{padding:"8px 10px",background:"#f5f3ff",border:"1px solid #c4b5fd",borderRadius:4,fontSize:11}}>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+              <select value={assigneeEdit.newId||""} onChange={e=>setAssigneeEdit({...assigneeEdit,newId:parseInt(e.target.value,10),err:null})} style={{flex:1,padding:"4px 6px",fontSize:12,border:"1px solid var(--bd)",borderRadius:3,fontFamily:"inherit"}}>
+                {assigneeWorkers.map(w=><option key={w.id} value={w.id}>{w.name} ({w.part_id||"-"}){w.is_part_lead?" ★":""}</option>)}
+              </select>
+            </div>
+            <input type="text" value={assigneeEdit.reason} onChange={e=>setAssigneeEdit({...assigneeEdit,reason:e.target.value,err:null})} placeholder="변경 사유 (필수): 예) 휴가 위임 / 파트 재배정" style={{width:"100%",padding:"4px 6px",fontSize:11,border:"1px solid var(--bd)",borderRadius:3,fontFamily:"inherit",marginBottom:6}}/>
+            <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+              <button onClick={()=>setAssigneeEdit(null)} disabled={assigneeEdit.saving} style={{padding:"3px 10px",fontSize:11,border:"1px solid var(--bd)",borderRadius:3,background:"var(--bg)",cursor:"pointer"}}>취소</button>
+              <button onClick={applyAssignee} disabled={assigneeEdit.saving||!assigneeEdit.newId||assigneeEdit.newId===task.assignee_id||!assigneeEdit.reason.trim()} style={{padding:"3px 10px",fontSize:11,border:"1px solid #7c3aed",borderRadius:3,background:"#7c3aed",color:"#fff",cursor:"pointer"}}>{assigneeEdit.saving?"적용 중...":"적용"}</button>
+            </div>
+            {assigneeEdit.err&&<div style={{marginTop:4,color:"var(--rd)",fontSize:10}}>{assigneeEdit.err}</div>}
+          </div></>}
           <div style={{color:"var(--t4)"}}>일정</div>
           <div>{task.start_date?task.start_date.slice(0,10):<span style={{color:"var(--rd)",fontWeight:600}}>(미정)</span>} ~ {task.end_date?task.end_date.slice(0,10):<span style={{color:"var(--rd)",fontWeight:600}}>(미정)</span>}</div>
           {task.days&&<><div style={{color:"var(--t4)"}}>소요일</div><div>{task.days}일</div></>}
@@ -4771,6 +4810,9 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const[nNotes,setNNotes]=useState(curNotes);
   const[nJiraUrl,setNJiraUrl]=useState(curJiraUrl);
   const[nVersionId,setNVersionId]=useState(curVersionId);
+  // v22 Track A-7: ⚡ 모달 담당자 필드 (direct_apply 만)
+  const curAssigneeId=task.assignee_id;
+  const[nAssigneeId,setNAssigneeId]=useState(curAssigneeId);
   const[reason,setReason]=useState(initialReason||"");
   const[cascadeChecked,setCascadeChecked]=useState(true); // direct_apply 모드: cascade 적용 여부 (기본 ON)
   const[jiraSyncChecked,setJiraSyncChecked]=useState(true); // direct_apply 모드: JIRA 큐 적재 여부 (기본 ON)
@@ -4803,7 +4845,10 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
   const notesChanged=isDirectApply&&nNotes!==curNotes;
   const jiraUrlChanged=isDirectApply&&nJiraUrl.trim()!==curJiraUrl;
   const versionIdChanged=isDirectApply&&(nVersionId||"")!==(curVersionId||"");
-  const metaChanged=titleChanged||notesChanged||jiraUrlChanged||versionIdChanged;
+  const assigneeChanged=isDirectApply&&nAssigneeId!==curAssigneeId&&nAssigneeId!=null;
+  const metaChanged=titleChanged||notesChanged||jiraUrlChanged||versionIdChanged||assigneeChanged;
+  // 활성 워커 정렬 (메타 expand 담당자 dropdown용)
+  const assigneeWorkers=useMemo(()=>(workers||[]).filter(w=>w.is_active!==false).sort((a,b)=>(a.part_id||'').localeCompare(b.part_id||'')||(a.name||'').localeCompare(b.name||'')),[workers]);
   // 트래커 versions (allTasks 에서 추출)
   const versionOptions=useMemo(()=>{
     const s=new Set();(allTasks||[]).forEach(t=>{if(t.version_id)s.add(t.version_id)});
@@ -4845,6 +4890,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
         if(notesChanged)triggerPatch.notes=nNotes||null;
         if(jiraUrlChanged)triggerPatch.jira_url=nJiraUrl.trim()||null;
         if(versionIdChanged)triggerPatch.version_id=nVersionId||null;
+        if(assigneeChanged)triggerPatch.assignee_id=nAssigneeId;
         await db.updTask(task.id,triggerPatch);
         if(ds!==curStart){
           await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"start_date",old_value:curStart||"-",new_value:ds||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id});
@@ -4869,6 +4915,11 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
         }
         if(versionIdChanged){
           await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"version_id",old_value:curVersionId||"-",new_value:nVersionId||"-",reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
+        }
+        if(assigneeChanged){
+          const oldName=(workers||[]).find(w=>w.id===curAssigneeId)?.name||"미배정";
+          const newName=(workers||[]).find(w=>w.id===nAssigneeId)?.name||"#"+nAssigneeId;
+          await db.addChange({content_id:task.content_id||null,task_id:task.id,field:"assignee_id",old_value:oldName,new_value:newName,reason:reasonText,changed_by:user.name,actor_worker_id:user.id}).catch(()=>null);
         }
         // 2) cascade affected tasks (일정 변경 + delta>0 일 때만, dateChanged 없으면 affected 도 빈 배열)
         let cascadeApplied=0;
@@ -5000,7 +5051,7 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
         {/* v22 Track A-5: 메타 필드 expand (제목/내용/jira_url/version_id) */}
         {isDirectApply&&<div style={{padding:"8px 12px",background:"var(--bg2)",borderRadius:6,fontSize:11,marginBottom:12,border:"1px solid var(--bd)"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:showMeta?8:0,cursor:"pointer"}} onClick={()=>setShowMeta(!showMeta)}>
-            <span style={{fontWeight:600,color:"var(--t2)"}}>{showMeta?"▼":"▶"} 메타 필드 편집 (제목/내용/JIRA URL/버전)</span>
+            <span style={{fontWeight:600,color:"var(--t2)"}}>{showMeta?"▼":"▶"} 메타 필드 편집 (제목/내용/JIRA URL/버전/담당자)</span>
             {metaChanged&&<span style={{fontSize:10,padding:"1px 5px",background:"#7c3aed",color:"#fff",borderRadius:2,fontWeight:600}}>변경됨</span>}
           </div>
           {showMeta&&<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -5028,6 +5079,14 @@ function ScheduleRequestModal({task,user,workers,allTasks,mode='request',onClose
               ★ {nVersionId} JIRA 매핑: fixVersion={versionJiraInfo.fixVersion} / sprint(active)={versionJiraInfo.sprint} / epic={versionJiraInfo.epic}
               {versionJiraInfo.label&&" / label="+versionJiraInfo.label}
             </div>}
+            <div>
+              <div style={{fontSize:10,color:"var(--t3)",marginBottom:3}}>담당자 (assignee_id)</div>
+              <select value={nAssigneeId||""} onChange={e=>setNAssigneeId(parseInt(e.target.value,10)||null)}
+                style={{width:"100%",padding:"5px 8px",border:"1px solid "+(assigneeChanged?"#7c3aed":"var(--bd)"),borderRadius:4,fontSize:12,fontFamily:"inherit"}}>
+                <option value="">(미배정)</option>
+                {assigneeWorkers.map(w=><option key={w.id} value={w.id}>{w.name} ({w.part_id||"-"}){w.is_part_lead?" ★":""}</option>)}
+              </select>
+            </div>
             <div>
               <div style={{fontSize:10,color:"var(--t3)",marginBottom:3}}>내용 (notes)</div>
               <textarea value={nNotes} onChange={e=>setNNotes(e.target.value)} placeholder="작업 상세 / 메모 / 컨텍스트"
